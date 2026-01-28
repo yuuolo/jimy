@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: online-chess-game
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./logs:/app/logs
+      - ./game.db:/app/game.db
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - chess-game-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: online-chess-game-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./dist:/usr/share/nginx/html:ro
+      - ./public:/usr/share/nginx/public:ro
+      - ./nginx-ssl.conf:/etc/nginx/conf.d/ssl.conf:ro
+      - ./logs:/var/log/nginx
+    depends_on:
+      - app
+    networks:
+      - chess-game-network
+
+networks:
+  chess-game-network:
+    driver: bridge
