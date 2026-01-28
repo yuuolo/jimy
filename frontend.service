@@ -1,0 +1,14 @@
+[Unit]
+Description=Frontend Server for Flip Card Game
+After=network.target
+
+[Service]
+Type=simple
+User=dev-yuu
+WorkingDirectory=/home/dev-yuu/dev/jimy
+ExecStart=/home/dev-yuu/dev/jimy/node_modules/.bin/serve -s dist -l 5173
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

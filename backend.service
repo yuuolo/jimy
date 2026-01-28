@@ -1,0 +1,14 @@
+[Unit]
+Description=Backend Server for Flip Card Game
+After=network.target
+
+[Service]
+Type=simple
+User=dev-yuu
+WorkingDirectory=/home/dev-yuu/dev/jimy
+ExecStart=/usr/local/bin/npm run server
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
