@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import FlipCardGame from './components/FlipCardGame';
+import AdminPage from './components/AdminPage';
 import { io, Socket } from 'socket.io-client';
 
 // 生成随机昵称的函数
@@ -33,6 +34,8 @@ function App() {
   
   // 游戏状态
   const [selectedCardCount, setSelectedCardCount] = useState(9);
+  const [columns, setColumns] = useState(3);
+  const [gameTitle, setGameTitle] = useState('壹城翻牌游戏');
   
   // Socket连接状态
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -44,6 +47,9 @@ function App() {
     gameOver: false,
     winner: null
   });
+  
+  // 管理页面状态
+  const [showAdminPage, setShowAdminPage] = useState(false);
 
   // 自动登录和随机昵称生成，直接进入游戏
   useEffect(() => {
@@ -66,30 +72,39 @@ function App() {
       setUser(newUser);
     }
     
-    // 从服务器获取默认牌数量
-    fetch('/api/preferences')
-      .then(response => response.json())
-      .then(data => {
-        if (data.defaultCardCount) {
-          setSelectedCardCount(data.defaultCardCount);
-        }
-      })
-      .catch(error => {
-        console.warn('获取默认牌数量失败，使用默认值:', error);
-      });
+    // 从服务器获取默认设置
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      fetch(`${apiUrl}/api/preferences`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.defaultCardCount) {
+            setSelectedCardCount(data.defaultCardCount);
+          }
+          if (data.defaultColumns) {
+            setColumns(data.defaultColumns);
+          }
+          if (data.gameTitle) {
+            setGameTitle(data.gameTitle);
+          }
+        })
+        .catch(error => {
+          console.warn('获取默认设置失败，使用默认值:', error);
+        });
   }, []);
 
   // 初始化Socket连接
   useEffect(() => {
     if (user.isLoggedIn) {
       // 创建Socket连接
-      const newSocket = io('http://jimy.novrein.com:3001');
+      const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://jimy.novrein.com:3001';
+      const newSocket = io(socketUrl);
       setSocket(newSocket);
 
       // 处理连接成功
       newSocket.on('connect', () => {
         console.log('Socket连接成功:', newSocket.id);
-        // 连接成功后不自动开始游戏，等待后端发送的初始游戏状态
+        // 连接成功后加入队列
+        newSocket.emit('joinQueue', user);
       });
 
       // 处理欢迎消息
@@ -104,20 +119,49 @@ function App() {
         setGameState(state);
       });
 
+      // 处理队列状态更新
+      newSocket.on('queueUpdated', (queueState) => {
+        console.log('队列状态更新:', queueState);
+        // 更新游戏状态中的队列信息
+        setGameState((prev: any) => ({
+          ...prev,
+          queueState
+        }));
+      });
+
       // 处理偏好设置更新
       newSocket.on('preferencesUpdated', (preferences) => {
         console.log('偏好设置更新:', preferences);
         if (preferences.defaultCardCount) {
           setSelectedCardCount(preferences.defaultCardCount);
         }
+        if (preferences.defaultColumns) {
+          setColumns(preferences.defaultColumns);
+        }
+        if (preferences.gameTitle) {
+          setGameTitle(preferences.gameTitle);
+        }
       });
+
+      // 处理错误消息
+      newSocket.on('error', (error) => {
+        console.error('服务器错误:', error);
+      });
+
+      // 心跳机制，每30秒发送一次心跳
+      const heartbeatInterval = setInterval(() => {
+        if (newSocket.connected) {
+          newSocket.emit('heartbeat', user.id);
+        }
+      }, 30000);
 
       // 清理函数
       return () => {
+        clearInterval(heartbeatInterval);
         newSocket.disconnect();
       };
     }
-  }, [user.isLoggedIn]);
+  }, [user]);
 
   // 处理昵称修改
   const handleNicknameChange = (nickname?: string) => {
@@ -146,48 +190,38 @@ function App() {
 
   return (
     <div className="app">
-      <main className="main">
-        <FlipCardGame
-          cardCount={selectedCardCount}
-          onBack={() => {}}
-          socket={socket}
-          gameState={gameState}
-          user={user}
-          isEditingNickname={isEditingNickname}
-          newNickname={newNickname}
-          onNicknameChange={(nickname) => {
-            if (typeof nickname === 'string') {
-              setNewNickname(nickname);
-            } else {
-              handleNicknameChange();
-            }
-          }}
-          onStartEditNickname={startEditNickname}
-          onCancelEditNickname={cancelEditNickname}
-          onCardCountChange={(count) => {
-            setSelectedCardCount(count);
-            // 保存牌数量到服务器
-            fetch('/api/preferences', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({ defaultCardCount: count })
-            })
-            .then(response => response.json())
-            .then(data => {
-              if (data.success) {
-                console.log('牌数量保存成功:', data.data.defaultCardCount);
-              } else {
-                console.warn('牌数量保存失败:', data.message);
-              }
-            })
-            .catch(error => {
-              console.warn('保存牌数量到服务器失败:', error);
-            });
-          }}
+      {showAdminPage ? (
+        <AdminPage 
+          socket={socket} 
+          onBack={() => setShowAdminPage(false)} 
         />
-      </main>
+      ) : (
+        <main className="main">
+          <FlipCardGame
+            cardCount={selectedCardCount}
+            columns={columns}
+            gameTitle={gameTitle}
+            onBack={() => {}}
+            socket={socket}
+            gameState={gameState}
+            user={user}
+            isEditingNickname={isEditingNickname}
+            newNickname={newNickname}
+            onNicknameChange={(nickname) => {
+              if (typeof nickname === 'string') {
+                setNewNickname(nickname);
+              } else {
+                handleNicknameChange();
+              }
+            }}
+            onStartEditNickname={startEditNickname}
+            onCancelEditNickname={cancelEditNickname}
+            onAdminClick={() => {
+              setShowAdminPage(true);
+            }}
+          />
+        </main>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 好嗨靓仔境翻牌游戏 - Docker部署脚本
+# 壹城翻牌游戏 - Docker部署脚本
 
 set -e
 
@@ -94,7 +94,7 @@ show_deployment_info() {
     log_step "部署完成！"
     echo ""
     echo "=========================================="
-    echo "  好嗨靓仔境翻牌游戏 - Docker部署信息"
+    echo "  壹城翻牌游戏 - Docker部署信息"
     echo "=========================================="
     echo ""
     echo "容器管理命令:"
@@ -105,8 +105,8 @@ show_deployment_info() {
     echo "  重新构建: docker-compose up -d --build"
     echo ""
     echo "访问地址:"
-    echo "  应用: http://localhost:3001"
-    echo "  Nginx: http://localhost"
+    echo "  应用: http://jimy.novrein.com:3001"
+    echo "  Nginx: http://jimy.novrein.com"
     echo ""
     echo "日志查看:"
     echo "  应用日志: docker-compose logs -f app"
@@ -120,7 +120,7 @@ show_deployment_info() {
 main() {
     echo ""
     echo "=========================================="
-    echo "  好嗨靓仔境翻牌游戏 - Docker部署"
+    echo "  壹城翻牌游戏 - Docker部署"
     echo "=========================================="
     echo ""
     

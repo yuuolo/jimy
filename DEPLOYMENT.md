@@ -1,6 +1,6 @@
-# 好嗨靓仔境翻牌游戏 - Ubuntu部署指南
+# 壹城翻牌游戏 - Ubuntu部署指南
 
-本文档提供在Ubuntu系统上部署"好嗨靓仔境"翻牌游戏的详细指南。
+本文档提供在Ubuntu系统上部署"壹城翻牌游戏"的详细指南。
 
 ## 目录
 
@@ -137,7 +137,7 @@ sudo systemctl status nginx
 sudo netstat -tuln | grep -E ':(3001|80)'
 
 # 测试健康检查
-curl http://localhost/health
+curl http://jimy.novrein.com/health
 ```
 
 ## 配置说明

@@ -1,6 +1,6 @@
-# 好嗨靓仔境翻牌游戏 - Docker部署指南
+# 壹城翻牌游戏 - Docker部署指南
 
-本文档提供使用Docker部署"好嗨靓仔境"翻牌游戏的详细指南。
+本文档提供使用Docker部署"壹城翻牌游戏"的详细指南。
 
 ## 前置要求
 
@@ -40,10 +40,10 @@ docker-compose ps
 
 ```bash
 # 应用直接访问
-http://localhost:3001
+http://jimy.novrein.com:3001
 
 # 通过Nginx访问
-http://localhost
+http://jimy.novrein.com
 ```
 
 ## Docker命令参考
@@ -315,7 +315,7 @@ services:
 
 ```yaml
 healthcheck:
-  test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
+  test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://jimy.novrein.com:3001/health"]
   interval: 30s
   timeout: 10s
   retries: 3

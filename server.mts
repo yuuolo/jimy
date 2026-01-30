@@ -138,5 +138,5 @@ io.on('connection', (socket) => {
 // 启动服务器
 const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {
-  console.log(`服务器运行在 http://localhost:${PORT}`);
+  console.log(`服务器运行在 http://jimy.novrein.com:${PORT}`);
 });

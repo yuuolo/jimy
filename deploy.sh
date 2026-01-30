@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 好嗨靓仔境翻牌游戏 - Ubuntu一键部署脚本
+# 壹城翻牌游戏 - Ubuntu一键部署脚本
 # 作者: Auto-generated
 # 日期: 2026-01-28
 
@@ -253,7 +253,7 @@ server {
 
     # API代理到后端
     location /api/ {
-        proxy_pass http://localhost:$BACKEND_PORT/api/;
+        proxy_pass http://jimy.novrein.com:$BACKEND_PORT/api/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -266,7 +266,7 @@ server {
 
     # WebSocket代理
     location /socket.io/ {
-        proxy_pass http://localhost:$BACKEND_PORT/socket.io/;
+        proxy_pass http://jimy.novrein.com:$BACKEND_PORT/socket.io/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -291,7 +291,7 @@ server {
 
     # 健康检查
     location /health {
-        proxy_pass http://localhost:$BACKEND_PORT/health;
+        proxy_pass http://jimy.novrein.com:$BACKEND_PORT/health;
         access_log off;
     }
 
@@ -404,7 +404,7 @@ show_deployment_info() {
     log_step "部署完成！"
     echo ""
     echo "=========================================="
-    echo "  好嗨靓仔境翻牌游戏 - 部署信息"
+    echo "  壹城翻牌游戏 - 部署信息"
     echo "=========================================="
     echo ""
     echo "应用目录: $APP_DIR"
@@ -441,7 +441,7 @@ show_deployment_info() {
 main() {
     echo ""
     echo "=========================================="
-    echo "  好嗨靓仔境翻牌游戏 - 一键部署脚本"
+    echo "  壹城翻牌游戏 - 一键部署脚本"
     echo "=========================================="
     echo ""
     
