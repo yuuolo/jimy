@@ -1,6 +1,18 @@
 {
-  "defaultCardCount": 25,
-  "gameTitle": "好嗨靓仔lok",
-  "timeoutMinutes": 30,
-  "defaultColumns": 5
+  "defaultCardCount": 9,
+  "gameTitle": "好嗨靓仔",
+  "timeoutMinutes": 15,
+  "defaultColumns": 3,
+  "winMessages": [
+    "恭喜你找到境哥牌！",
+    "运气真好，境哥牌被你找到了！",
+    "恭喜恭喜，你找到了境哥牌！",
+    "厉害了，境哥牌归你了！",
+    "D女都系大家既！"
+  ],
+  "autoRestartSeconds": 30,
+  "drinkParameter": 2,
+  "firstCardDrinkCount": 3,
+  "lastCardDrinkCount": 2,
+  "turnTimeoutSeconds": 10
 }

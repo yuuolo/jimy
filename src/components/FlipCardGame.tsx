@@ -1,60 +1,48 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Socket } from 'socket.io-client';
 
-// 设备类型检测相关代码（暂时注释，后续可用于更复杂的设备特定逻辑）
-/*
-// 设备类型检测函数
-const isMobileDevice = (): boolean => {
-  // 检测屏幕宽度
-  const screenWidth = window.innerWidth;
-  const isSmallScreen = screenWidth < 768;
-  
-  // 检测用户代理
-  const userAgent = navigator.userAgent.toLowerCase();
-  const isMobileUA = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
-  
-  // 检测触摸事件支持
-  const hasTouchSupport = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-  
-  // 综合判断
-  return isSmallScreen || isMobileUA || hasTouchSupport;
-};
-
-// 设备类型检测钩子
-const useDeviceType = () => {
-  const [isMobile, setIsMobile] = useState<boolean>(false);
-  
-  useEffect(() => {
-    // 初始检测
-    setIsMobile(isMobileDevice());
-    
-    // 监听窗口大小变化
-    const handleResize = () => {
-      setIsMobile(isMobileDevice());
-    };
-    
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-  
-  return isMobile;
-};
-*/
-
-// 用户数据类型
 interface User {
   id: string;
   nickname: string;
   isLoggedIn: boolean;
 }
 
+interface GameState {
+  cards: Card[];
+  gameOver: boolean;
+  status: string;
+  queueState: QueueState | null;
+  winMessage: string | null;
+  drinkCount: number;
+}
+
+interface QueueState {
+  players: Player[];
+  turnPlayer: Player | null;
+  turnFlipCount: number;
+}
+
+interface Player {
+  id: string;
+  nickname: string;
+  isTurn: boolean;
+  isActive: boolean;
+}
+
+interface Card {
+  id: number;
+  isFlipped: boolean;
+  isJingCard: boolean;
+}
+
 interface FlipCardGameProps {
   cardCount: number;
   columns: number;
   gameTitle: string;
+  autoRestartSeconds: number;
   onBack: () => void;
   socket: Socket | null;
-  gameState: any;
+  gameState: GameState;
   user: User;
   isEditingNickname: boolean;
   newNickname: string;
@@ -64,253 +52,260 @@ interface FlipCardGameProps {
   onAdminClick: () => void;
 }
 
-interface Card {
-  id: number;
-  isFlipped: boolean;
-  isJingCard: boolean;
-}
-
-const FlipCardGame: React.FC<FlipCardGameProps> = ({ cardCount, columns, gameTitle, socket, gameState, user, isEditingNickname, newNickname, onNicknameChange, onStartEditNickname, onCancelEditNickname, onAdminClick }) => {
-  const [cards, setCards] = useState<Card[]>([]);
-  const [gameOver, setGameOver] = useState(false);
+const FlipCardGame: React.FC<FlipCardGameProps> = ({ 
+  cardCount, 
+  columns, 
+  gameTitle, 
+  autoRestartSeconds,
+  socket, 
+  gameState, 
+  user, 
+  isEditingNickname, 
+  newNickname, 
+  onNicknameChange, 
+  onStartEditNickname, 
+  onCancelEditNickname, 
+  onAdminClick 
+}) => {
   const [showJingCard, setShowJingCard] = useState(false);
-  const [showWinnerBroadcast, setShowWinnerBroadcast] = useState(false);
-  const [winnerData, setWinnerData] = useState<any>(null);
   const [isMyTurn, setIsMyTurn] = useState(false);
   const [currentFlipCount, setCurrentFlipCount] = useState(0);
+  const [randomWinMessage, setRandomWinMessage] = useState('');
+  const [countdown, setCountdown] = useState(0);
+  const [turnCountdown, setTurnCountdown] = useState(0);
+  
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const flipAudioRef = useRef<HTMLAudioElement | null>(null);
   const jingAudioRef = useRef<HTMLAudioElement | null>(null);
   const restartAudioRef = useRef<HTMLAudioElement | null>(null);
-  
-  // 使用设备类型检测钩子（暂时注释，后续可用于更复杂的设备特定逻辑）
-  // const isMobile = useDeviceType();
+  const heartbeatAudioRef = useRef<HTMLAudioElement | null>(null);
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 获取适合当前屏幕的列数
-  const getOptimalColumns = (): number => {
-    const count = cards.length;
-    if (count === 0) return columns; // 默认使用传入的列数
+  const getDrinkArtText = useCallback((drinkCount: number | undefined): string => {
+    return (drinkCount || 0).toString();
+  }, []);
+
+  // 监听酒杯数量变化，播放心跳声
+  useEffect(() => {
+    // 检查是否需要播放心跳声
+    if (gameState.drinkCount >= 5 && !gameState.gameOver) {
+      if (heartbeatAudioRef.current) {
+        heartbeatAudioRef.current.currentTime = 0;
+        heartbeatAudioRef.current.play().catch(err => {
+          console.warn('心跳声播放失败:', err);
+        });
+      }
+    } else {
+      // 停止心跳声
+      if (heartbeatAudioRef.current) {
+        heartbeatAudioRef.current.pause();
+        heartbeatAudioRef.current.currentTime = 0;
+      }
+    }
+  }, [gameState.drinkCount, gameState.gameOver]);
+
+  const playAudio = useCallback((audioRef: React.RefObject<HTMLAudioElement>) => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(err => {
+        console.warn('音频播放失败，游戏继续:', err);
+      });
+    }
+  }, []);
+
+  const getOptimalColumns = useCallback((): number => {
+    const count = gameState.cards?.length || 0;
+    if (count === 0) return columns;
     
     const screenWidth = window.innerWidth;
-    const screenHeight = window.innerHeight;
     
-    // 计算最佳列数，确保卡片能够填满屏幕
-    let optimalColumns = columns;
-    
-    // 根据屏幕宽度动态调整列数
     if (screenWidth < 360) {
-      // 小屏幕手机，最多3列
-      optimalColumns = Math.min(columns, 3);
+      return Math.min(columns, 3);
     } else if (screenWidth < 480) {
-      // 手机屏幕，最多4列
-      optimalColumns = Math.min(columns, 4);
+      return Math.min(columns, 4);
     } else if (screenWidth < 768) {
-      // 平板屏幕，最多6列
-      optimalColumns = Math.min(columns, 6);
+      return Math.min(columns, 6);
     } else if (screenWidth < 1024) {
-      // 小屏幕桌面，最多8列
-      optimalColumns = Math.min(columns, 8);
+      return Math.min(columns, 8);
     } else if (screenWidth < 1440) {
-      // 中等屏幕桌面，最多12列
-      optimalColumns = Math.min(columns, 12);
+      return Math.min(columns, 12);
     } else {
-      // 大屏幕桌面，根据卡片数量和屏幕宽度计算最佳列数
-      // 确保所有卡片都能完整显示
-      const maxPossibleColumns = Math.floor(screenWidth / 120); // 每张卡片最小宽度120px
-      optimalColumns = Math.min(columns, maxPossibleColumns, count);
+      const maxPossibleColumns = Math.floor(screenWidth / 120);
+      return Math.min(columns, maxPossibleColumns, count);
     }
-    
-    return optimalColumns;
-  };
+  }, [gameState.cards?.length, columns]);
 
-  // 初始化游戏
-  useEffect(() => {
-    if (gameState && gameState.cards) {
-      setCards(gameState.cards);
-      setGameOver(gameState.gameOver);
-      
-      // 更新队列状态
-      if (gameState.queueState) {
-        // 检查是否是当前玩家的回合
-        const isTurn = gameState.queueState.turnPlayer && 
-                      gameState.queueState.turnPlayer.id === user.id;
-        setIsMyTurn(isTurn);
-        
-        // 更新当前回合翻牌数
-        setCurrentFlipCount(gameState.queueState.turnFlipCount || 0);
-      }
-      
-      // 摸到境哥牌后，延迟1秒再显示放大效果
-      if (gameState.gameOver && gameState.status === 'ended') {
-        const timer = setTimeout(() => {
-          setShowJingCard(true);
-        }, 1000);
-        
-        // 清理函数
-        return () => clearTimeout(timer);
-      } else {
-        setShowJingCard(false);
-      }
-    }
-  }, [gameState, user.id]);
-
-  // 初始化游戏卡片
-  const initializeGame = () => {
+  const initializeGame = useCallback(() => {
     if (socket) {
       socket.emit('restartGame', { cardCount, playerId: user.id });
     }
-  };
+  }, [socket, cardCount, user.id]);
 
-  // 处理卡片翻转
-  const handleCardClick = (cardId: number) => {
-    if (gameOver) return;
+  const handleFlipCard = useCallback((cardId: number) => {
+    if (gameState.gameOver) return;
     
-    // 检查是否是当前玩家的回合
     if (!isMyTurn) {
       console.warn('不是你的回合，无法翻牌');
       return;
     }
     
-    // 检查卡片是否已经翻转
-    const clickedCard = cards.find(card => card.id === cardId);
+    const clickedCard = gameState.cards?.find(card => card.id === cardId);
     if (clickedCard && clickedCard.isFlipped) {
       console.warn('卡片已经翻转，无法再次翻转');
       return;
     }
     
-    // 检查当前点击的卡片是否是境哥牌
-    if (!clickedCard?.isJingCard) {
-      // 只有非境哥牌才播放翻牌音效
-      if (flipAudioRef.current) {
-        flipAudioRef.current.currentTime = 0;
-        flipAudioRef.current.play().catch(err => {
-          console.warn('翻牌音效播放失败，游戏继续:', err);
-        });
-      }
+    if (clickedCard?.isJingCard) {
+      playAudio(jingAudioRef);
     } else {
-      // 境哥牌播放特殊音效
-      if (jingAudioRef.current) {
-        jingAudioRef.current.currentTime = 0;
-        jingAudioRef.current.play().catch(err => {
-          console.warn('境哥牌音效播放失败，游戏继续:', err);
-        });
-      }
+      playAudio(flipAudioRef);
     }
     
     if (socket) {
       socket.emit('flipCard', { cardId, playerId: user.id });
     }
-  };
+  }, [gameState.gameOver, gameState.cards, isMyTurn, socket, user.id, playAudio]);
 
-  // 重新开始游戏
-  const handleRestartGame = () => {
-    // 检查是否是当前玩家的回合
+  const handleRestartGame = useCallback(() => {
     if (!isMyTurn) {
       console.warn('不是你的回合，无法重新开始游戏');
       return;
     }
     
-    // 播放重新开始音效
-    if (restartAudioRef.current) {
-      restartAudioRef.current.currentTime = 0;
-      restartAudioRef.current.play().catch(err => {
-        console.warn('重新开始音效播放失败，游戏继续:', err);
-      });
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
     }
     
+    playAudio(restartAudioRef);
     initializeGame();
-  };
+  }, [isMyTurn, playAudio, initializeGame]);
 
-  // 结束回合
-  const handleEndTurn = () => {
-    if (socket && isMyTurn) {
+  const handleEndTurn = useCallback(() => {
+    if (socket && isMyTurn && currentFlipCount > 0) {
       socket.emit('endTurn', user.id);
     }
-  };
+  }, [socket, isMyTurn, currentFlipCount, user.id]);
 
-  // 退出队列
-  const handleExitQueue = () => {
+  const handleExitQueue = useCallback(() => {
     if (socket && user.id) {
       socket.emit('exitQueue', user.id);
-      // 可以添加一些用户反馈
       console.log('已发送退出队列请求');
     }
-  };
+  }, [socket, user.id]);
 
-  // 监听游戏状态变化，处理境哥牌播放
+  const handleJoinQueue = useCallback(() => {
+    if (socket && user.id) {
+      socket.emit('joinQueue', { id: user.id, nickname: user.nickname });
+      console.log('已发送加入队列请求');
+    }
+  }, [socket, user.id, user.nickname]);
+
+  const isUserInQueue = useMemo(() => {
+    return gameState.queueState?.players.some((p: Player) => p.id === user.id) ?? false;
+  }, [gameState.queueState, user.id]);
+
   useEffect(() => {
-    if (gameState.gameOver && gameState.status === 'ended') {
-      if (audioRef.current) {
-        // 检查音频是否已加载且有效
-        if (audioRef.current.readyState >= 2) {
-          audioRef.current.play().catch(err => {
+    if (gameState) {
+      
+      if (gameState.queueState) {
+        const isTurn = !!(gameState.queueState.turnPlayer && 
+                      gameState.queueState.turnPlayer.id === user.id);
+        setIsMyTurn(isTurn);
+        setCurrentFlipCount(gameState.queueState.turnFlipCount || 0);
+      }
+      
+      if (gameState.gameOver && gameState.status === 'ended') {
+        setShowJingCard(true);
+        if (gameState.winMessage) {
+          setRandomWinMessage(gameState.winMessage);
+        }
+        
+        // 不管当前回合玩家是否离线，或者游戏队列是否有玩家，都自动重新开始游戏
+        setCountdown(autoRestartSeconds);
+        countdownTimerRef.current = setInterval(() => {
+          setCountdown(prev => {
+            if (prev <= 1) {
+              clearInterval(countdownTimerRef.current!);
+              initializeGame();
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+        
+        return () => {
+          if (countdownTimerRef.current) {
+            clearInterval(countdownTimerRef.current);
+          }
+        };
+      } else {
+        setShowJingCard(false);
+        setRandomWinMessage('');
+        setCountdown(0);
+        if (countdownTimerRef.current) {
+          clearInterval(countdownTimerRef.current);
+        }
+      }
+    }
+  }, [gameState, user.id, isMyTurn, initializeGame, autoRestartSeconds]);
+
+  useEffect(() => {
+    if (gameState.gameOver && gameState.status === 'ended' && audioRef.current) {
+      if (audioRef.current.readyState >= 2) {
+        audioRef.current.play().catch(err => {
+          console.warn('音频播放失败，游戏继续:', err);
+        });
+      } else {
+        const handleCanPlay = () => {
+          audioRef.current?.play().catch(err => {
             console.warn('音频播放失败，游戏继续:', err);
           });
-        } else {
-          // 音频未加载完成，等待加载完成后播放
-          audioRef.current.addEventListener('canplaythrough', () => {
-            audioRef.current?.play().catch(err => {
-              console.warn('音频播放失败，游戏继续:', err);
-            });
-          });
-        }
+        };
+        
+        audioRef.current.addEventListener('canplaythrough', handleCanPlay);
+        
+        return () => {
+          audioRef.current?.removeEventListener('canplaythrough', handleCanPlay);
+        };
       }
     }
   }, [gameState.gameOver, gameState.status]);
 
-  // 音频加载错误处理
   useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.addEventListener('error', (e) => {
-        console.warn('音频加载错误，游戏继续:', e);
-      });
-    }
-  }, []);
+    if (!socket) return;
 
-  // 处理WebSocket事件
-  useEffect(() => {
-    if (socket) {
-      // 处理境哥牌被找到
-      const handleJingCardFound = (data: any) => {
-        console.log('境哥牌被找到:', data);
-        setWinnerData(data);
-        setShowWinnerBroadcast(true);
-        
-        // 3秒后隐藏广播
-        const timer = setTimeout(() => {
-          setShowWinnerBroadcast(false);
-        }, 3000);
-        
-        return () => clearTimeout(timer);
-      };
+    const handleJingCardFound = (data: any) => {
+      console.log('境哥牌被找到:', data);
+      setCurrentFlipCount(0);
+    };
 
-      // 处理回合结束
-      const handleTurnEnded = (data: any) => {
-        console.log('回合结束:', data);
-        // 可以显示回合结束提示
-      };
+    const handleTurnEnded = (data: any) => {
+      console.log('回合结束:', data);
+    };
 
-      // 处理错误消息
-      const handleError = (error: any) => {
-        console.error('服务器错误:', error);
-        // 可以显示错误提示
-      };
+    const handleTurnCountdownUpdated = (data: any) => {
+      console.log('倒计时更新:', data);
+      setTurnCountdown(data.countdown);
+    };
 
-      // 注册事件监听器
-      socket.on('jingCardFound', handleJingCardFound);
-      socket.on('turnEnded', handleTurnEnded);
-      socket.on('error', handleError);
+    const handleError = (error: any) => {
+      console.error('服务器错误:', error);
+    };
 
-      // 清理函数
-      return () => {
-        socket.off('jingCardFound', handleJingCardFound);
-        socket.off('turnEnded', handleTurnEnded);
-        socket.off('error', handleError);
-      };
-    }
-  }, [socket]);
+    socket.on('jingCardFound', handleJingCardFound);
+    socket.on('turnEnded', handleTurnEnded);
+    socket.on('turnCountdownUpdated', handleTurnCountdownUpdated);
+    socket.on('error', handleError);
 
-  // 滚动监听，显示/隐藏管理按钮
+    return () => {
+      socket.off('jingCardFound', handleJingCardFound);
+      socket.off('turnEnded', handleTurnEnded);
+      socket.off('turnCountdownUpdated', handleTurnCountdownUpdated);
+      socket.off('error', handleError);
+    };
+  }, [socket, user.id]);
+
   useEffect(() => {
     const isMobile = window.innerWidth < 768;
     if (!isMobile) return;
@@ -325,24 +320,20 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({ cardCount, columns, gameTit
       const scrollHeight = document.documentElement.scrollHeight;
       const clientHeight = document.documentElement.clientHeight;
 
-      // 当滚动到底部时
       if (scrollTop + clientHeight >= scrollHeight - 50) {
-        // 显示管理按钮
         adminContainer.classList.add('show');
 
-        // 清除之前的定时器
         if (hideTimer) {
           clearTimeout(hideTimer);
         }
 
-        // 1秒后隐藏
         hideTimer = setTimeout(() => {
           adminContainer.classList.remove('show');
         }, 1000);
       }
     };
 
-    window.addEventListener('scroll', handleScroll);
+    window.addEventListener('scroll', handleScroll, { passive: true });
 
     return () => {
       window.removeEventListener('scroll', handleScroll);
@@ -354,9 +345,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({ cardCount, columns, gameTit
 
   return (
     <div className="flip-card-game">
-      {/* 右侧布局区域 */}
       <div className="right-layout">
-        {/* 游戏头部 */}
         <div className="game-header">
           <div className="game-header-top">
             <h2>{gameTitle}</h2>
@@ -377,43 +366,77 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({ cardCount, columns, gameTit
                 </div>
               ) : (
                 <div className="nickname-display">
-                  <span className="nickname">{user?.nickname || '玩家'}</span>
-                  <button onClick={onStartEditNickname} className="edit-button">编辑</button>
+                  <span className="nickname" onClick={onStartEditNickname}>{user?.nickname || '玩家'}</span>
                   <button onClick={onAdminClick} className="admin-button">管理</button>
-                  <button onClick={() => handleExitQueue()} className="exit-queue-button">退出队列</button>
+                  {isUserInQueue ? (
+                    <button onClick={handleExitQueue} className="exit-queue-button">退出队列</button>
+                  ) : (
+                    <button onClick={handleJoinQueue} className="join-queue-button">加入队列</button>
+                  )}
                 </div>
               )}
             </div>
           </div>
           
-          {/* 回合信息 */}
           {gameState.queueState && (
             <div className="turn-info">
-              <div className="current-turn-player">
-                当前回合: {gameState.queueState.turnPlayer?.nickname || '无'}
-              </div>
               <div className="flip-count">
                 本回合翻牌数: {currentFlipCount}
               </div>
+              <div className="drink-count">
+                酒杯数量: {gameState.drinkCount}
+              </div>
             </div>
           )}
+          
+          <div 
+            className="drink-art-text"
+            style={{
+              animationDuration: `${Math.max(0.2, 2 - gameState.drinkCount * 0.3)}s`
+            }}
+          >
+            {getDrinkArtText(gameState.drinkCount)}
+          </div>
         </div>
-
       </div>
 
-      {/* 主游戏区域 */}
       <div className="game-main">
-
-        {/* 操作控制区 */}
         <div className="game-controls-top">
-          {isMyTurn && (
-            <button onClick={handleEndTurn} className="end-turn-button">
-              结束回合
-            </button>
-          )}
-          {!isMyTurn && (
+          {gameState.queueState?.turnPlayer ? (
+            <div className="turn-controls">
+              {!isMyTurn && (
+                <div className="current-player">
+                  当前: {gameState.queueState.turnPlayer.nickname}
+                </div>
+              )}
+              {isMyTurn && (
+                <button 
+                  onClick={handleEndTurn} 
+                  className="end-turn-button"
+                  disabled={currentFlipCount === 0}
+                >
+                  结束回合
+                </button>
+              )}
+              <>
+                <svg className="clock-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                  <path d="M12 6V12L16 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M12 2V4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M12 20V22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M2 12H4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M20 12H22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M4.93 4.93L6.34 6.34" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M17.66 17.66L19.07 19.07" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M4.93 19.07L6.34 17.66" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M17.66 6.34L19.07 4.93" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                <span className="countdown-text">{turnCountdown}s</span>
+              </>
+            </div>
+          ) : (
             <div className="waiting-message">
-              等待其他玩家...
+              等待玩家加入...
             </div>
           )}
         </div>
@@ -424,11 +447,11 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({ cardCount, columns, gameTit
             gridTemplateColumns: `repeat(${getOptimalColumns()}, 1fr)`
           }}
         >
-          {cards.map(card => (
+          {gameState.cards?.map(card => (
             <div
               key={card.id}
-              className={`card ${card.isFlipped ? 'flipped' : ''} ${!isMyTurn ? 'disabled' : ''}`}
-              onClick={() => handleCardClick(card.id)}
+              className={`card ${card.isFlipped ? 'flipped' : ''} ${isUserInQueue && !isMyTurn ? 'disabled' : ''}`}
+              onClick={() => handleFlipCard(card.id)}
             >
               <div className="card-inner">
                 {!card.isFlipped ? (
@@ -451,41 +474,32 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({ cardCount, columns, gameTit
         </div>
       </div>
 
-      {/* 境哥牌放大效果 */}
       {showJingCard && (
         <div className="jing-card-overlay">
           <div className="jing-card-container">
             <img src="/png/1.jpg" alt="境哥牌" className="jing-card-large" />
             <div className="jing-card-text">
-              <h3>恭喜你找到境哥牌！</h3>
-              <p>游戏结束</p>
+              <h3>{randomWinMessage || '恭喜你找到境哥牌！'}</h3>
+              <p className="drink-punishment">{gameState.queueState?.turnPlayer?.nickname || '玩家'}罚酒{gameState.drinkCount}杯</p>
             </div>
             <div className="jing-card-buttons">
-              <button onClick={handleRestartGame} className="restart-button">
-                重新开始
+              <button 
+                onClick={handleRestartGame} 
+                className="restart-button"
+                disabled={!isMyTurn}
+              >
+                {countdown > 0 ? `重新开始 (${countdown}秒)` : '重新开始'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 赢家昵称放大广播 */}
-      {showWinnerBroadcast && winnerData && (
-        <div className="winner-broadcast">
-          <div className="winner-message">
-            <h2>{winnerData.player.nickname}</h2>
-            <p>找到了境哥牌！</p>
-            <p>本回合翻了 {winnerData.flipCount} 张牌</p>
-          </div>
-        </div>
-      )}
-
-      {/* 玩家队列显示 */}
       {gameState.queueState && (
         <div className="player-queue">
           <h3>游戏队列</h3>
           <div className="queue-list">
-            {gameState.queueState.players.map((player: any, index: number) => (
+            {gameState.queueState.players.slice(0, 10).map((player: Player, index: number) => (
               <div 
                 key={player.id} 
                 className={`queue-item ${player.isTurn ? 'current-turn' : ''} ${!player.isActive ? 'inactive' : ''}`}
@@ -496,34 +510,38 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({ cardCount, columns, gameTit
                 {!player.isActive && <span className="inactive-indicator">离线</span>}
               </div>
             ))}
+            {gameState.queueState.players.length > 10 && (
+              <div className="queue-more">
+                还有 {gameState.queueState.players.length - 10} 位玩家在队列中...
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* 底部管理按钮 - 手机端 */}
       <div className="mobile-admin-container">
         <button onClick={onAdminClick} className="mobile-admin-button">管理</button>
       </div>
 
-      {/* 音频元素 */}
       <audio ref={audioRef} src="/sounds/tuboshu.mp3" preload="auto">
         您的浏览器不支持音频元素。
-       </audio>
+      </audio>
       
-      {/* 翻牌音效 */}
       <audio ref={flipAudioRef} src="/sounds/button-17.mp3" preload="auto">
         您的浏览器不支持音频元素。
-       </audio>
+      </audio>
       
-      {/* 境哥牌音效 */}
       <audio ref={jingAudioRef} src="/sounds/tuboshu1.mp3" preload="auto">
         您的浏览器不支持音频元素。
-       </audio>
+      </audio>
       
-      {/* 重新开始音效 */}
       <audio ref={restartAudioRef} src="/sounds/button-7.mp3" preload="auto">
         您的浏览器不支持音频元素。
-       </audio>
+      </audio>
+      
+      <audio ref={heartbeatAudioRef} src="/sounds/heartbeat.mp3" preload="auto" loop>
+        您的浏览器不支持音频元素。
+      </audio>
     </div>
   );
 };

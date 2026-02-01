@@ -5,12 +5,9 @@ import { io, Socket } from 'socket.io-client';
 
 // 生成随机昵称的函数
 const generateRandomNickname = (): string => {
-  const adjectives = ['快乐的', '勇敢的', '聪明的', '友善的', '活泼的'];
-  const nouns = ['熊猫', '老虎', '狮子', '大象', '长颈鹿'];
-  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-  const noun = nouns[Math.floor(Math.random() * nouns.length)];
-  const num = Math.floor(Math.random() * 1000);
-  return `${adj}${noun}${num}`;
+  const prefix = '点我改昵称';
+  const suffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+  return `${prefix}${suffix}`;
 };
 
 // 用户数据类型
@@ -36,6 +33,11 @@ function App() {
   const [selectedCardCount, setSelectedCardCount] = useState(9);
   const [columns, setColumns] = useState(3);
   const [gameTitle, setGameTitle] = useState('壹城翻牌游戏');
+  const [autoRestartSeconds, setAutoRestartSeconds] = useState(10);
+  const [drinkParameter, setDrinkParameter] = useState(1);
+  const [firstCardDrinkCount, setFirstCardDrinkCount] = useState(3);
+  const [lastCardDrinkCount, setLastCardDrinkCount] = useState(2);
+  const [turnTimeoutSeconds, setTurnTimeoutSeconds] = useState(30);
   
   // Socket连接状态
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -85,6 +87,21 @@ function App() {
           }
           if (data.gameTitle) {
             setGameTitle(data.gameTitle);
+          }
+          if (data.autoRestartSeconds && typeof data.autoRestartSeconds === 'number') {
+            setAutoRestartSeconds(data.autoRestartSeconds);
+          }
+          if (data.drinkParameter && typeof data.drinkParameter === 'number') {
+            setDrinkParameter(data.drinkParameter);
+          }
+          if (data.firstCardDrinkCount && typeof data.firstCardDrinkCount === 'number') {
+            setFirstCardDrinkCount(data.firstCardDrinkCount);
+          }
+          if (data.lastCardDrinkCount && typeof data.lastCardDrinkCount === 'number') {
+            setLastCardDrinkCount(data.lastCardDrinkCount);
+          }
+          if (data.turnTimeoutSeconds && typeof data.turnTimeoutSeconds === 'number') {
+            setTurnTimeoutSeconds(data.turnTimeoutSeconds);
           }
         })
         .catch(error => {
@@ -141,6 +158,18 @@ function App() {
         if (preferences.gameTitle) {
           setGameTitle(preferences.gameTitle);
         }
+        if (preferences.autoRestartSeconds && typeof preferences.autoRestartSeconds === 'number') {
+          setAutoRestartSeconds(preferences.autoRestartSeconds);
+        }
+        if (preferences.drinkParameter && typeof preferences.drinkParameter === 'number') {
+          setDrinkParameter(preferences.drinkParameter);
+        }
+        if (preferences.firstCardDrinkCount && typeof preferences.firstCardDrinkCount === 'number') {
+          setFirstCardDrinkCount(preferences.firstCardDrinkCount);
+        }
+        if (preferences.lastCardDrinkCount && typeof preferences.lastCardDrinkCount === 'number') {
+          setLastCardDrinkCount(preferences.lastCardDrinkCount);
+        }
       });
 
       // 处理错误消息
@@ -194,6 +223,11 @@ function App() {
         <AdminPage 
           socket={socket} 
           onBack={() => setShowAdminPage(false)} 
+          drinkParameter={drinkParameter}
+          firstCardDrinkCount={firstCardDrinkCount}
+          lastCardDrinkCount={lastCardDrinkCount}
+          autoRestartSeconds={autoRestartSeconds}
+          turnTimeoutSeconds={turnTimeoutSeconds}
         />
       ) : (
         <main className="main">
@@ -201,6 +235,7 @@ function App() {
             cardCount={selectedCardCount}
             columns={columns}
             gameTitle={gameTitle}
+            autoRestartSeconds={autoRestartSeconds}
             onBack={() => {}}
             socket={socket}
             gameState={gameState}

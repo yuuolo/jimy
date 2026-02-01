@@ -1,9 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Socket } from 'socket.io-client';
 
 interface AdminPageProps {
   socket: Socket | null;
   onBack?: () => void;
+  drinkParameter: number;
+  firstCardDrinkCount: number;
+  lastCardDrinkCount: number;
+  autoRestartSeconds: number;
+  turnTimeoutSeconds: number;
 }
 
 interface Player {
@@ -13,15 +18,269 @@ interface Player {
   isActive: boolean;
 }
 
-const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack }) => {
+const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: propDrinkParameter, firstCardDrinkCount: propFirstCardDrinkCount, lastCardDrinkCount: propLastCardDrinkCount, autoRestartSeconds: propAutoRestartSeconds, turnTimeoutSeconds: propTurnTimeoutSeconds }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [players, setPlayers] = useState<Player[]>([]);
   const [timeoutMinutes, setTimeoutMinutes] = useState(3);
+  const [turnTimeoutSeconds, setTurnTimeoutSeconds] = useState(propTurnTimeoutSeconds || 30);
   const [gameTitle, setGameTitle] = useState('壹城翻牌游戏');
   const [cardCount, setCardCount] = useState(9);
   const [columns, setColumns] = useState(3);
+  const [winMessages, setWinMessages] = useState<string[]>([
+    '恭喜你找到境哥牌！',
+    '太棒了，你找到了！',
+    '运气真好，境哥牌被你找到了！',
+    '恭喜恭喜，你找到了境哥牌！',
+    '厉害了，境哥牌归你了！'
+  ]);
+  const [newWinMessage, setNewWinMessage] = useState('');
+  const [autoRestartSeconds, setAutoRestartSeconds] = useState(propAutoRestartSeconds || 10);
+  const [drinkParameter, setDrinkParameter] = useState(propDrinkParameter);
+  const [firstCardDrinkCount, setFirstCardDrinkCount] = useState(propFirstCardDrinkCount);
+  const [lastCardDrinkCount, setLastCardDrinkCount] = useState(propLastCardDrinkCount);
+  
+  const isInitialized = useRef(false);
+
+  // 监听 propAutoRestartSeconds 的变化
+  useEffect(() => {
+    setAutoRestartSeconds(propAutoRestartSeconds || 10);
+  }, [propAutoRestartSeconds]);
+
+  // 监听 propTurnTimeoutSeconds 的变化
+  useEffect(() => {
+    setTurnTimeoutSeconds(propTurnTimeoutSeconds || 30);
+  }, [propTurnTimeoutSeconds]);
+
+  // 监听 propFirstCardDrinkCount 的变化
+  useEffect(() => {
+    setFirstCardDrinkCount(propFirstCardDrinkCount);
+  }, [propFirstCardDrinkCount]);
+
+  // 监听 propLastCardDrinkCount 的变化
+  useEffect(() => {
+    setLastCardDrinkCount(propLastCardDrinkCount);
+  }, [propLastCardDrinkCount]);
+
+  // 监听 propTurnTimeoutSeconds 的变化
+  useEffect(() => {
+    setTurnTimeoutSeconds(propTurnTimeoutSeconds || 30);
+  }, [propTurnTimeoutSeconds]);
+
+  // 自动保存自动重启时间
+  useEffect(() => {
+    if (isInitialized.current && isAuthenticated && autoRestartSeconds >= 5 && autoRestartSeconds <= 60) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      fetch(`${apiUrl}/api/preferences`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ autoRestartSeconds })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) {
+          console.error('自动重启时间更新失败:', data.message);
+        }
+      })
+      .catch(error => {
+        console.error('更新自动重启时间失败:', error);
+      });
+    }
+  }, [autoRestartSeconds, isAuthenticated]);
+
+  // 自动保存喝酒参数
+  useEffect(() => {
+    if (isInitialized.current && isAuthenticated && drinkParameter >= 1 && drinkParameter <= 100) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      fetch(`${apiUrl}/api/preferences`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ drinkParameter })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) {
+          console.error('喝酒参数更新失败:', data.message);
+        }
+      })
+      .catch(error => {
+        console.error('更新喝酒参数失败:', error);
+      });
+    }
+  }, [drinkParameter, isAuthenticated]);
+
+  // 自动保存第一种算法参数
+  useEffect(() => {
+    if (isInitialized.current && isAuthenticated && firstCardDrinkCount >= 1 && firstCardDrinkCount <= 100) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      fetch(`${apiUrl}/api/preferences`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ firstCardDrinkCount })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) {
+          console.error('第一种算法参数更新失败:', data.message);
+        }
+      })
+      .catch(error => {
+        console.error('更新第一种算法参数失败:', error);
+      });
+    }
+  }, [firstCardDrinkCount, isAuthenticated]);
+
+  // 自动保存第三种算法参数
+  useEffect(() => {
+    if (isInitialized.current && isAuthenticated && lastCardDrinkCount >= 1 && lastCardDrinkCount <= 100) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      fetch(`${apiUrl}/api/preferences`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ lastCardDrinkCount })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) {
+          console.error('第三种算法参数更新失败:', data.message);
+        }
+      })
+      .catch(error => {
+        console.error('更新第三种算法参数失败:', error);
+      });
+    }
+  }, [lastCardDrinkCount, isAuthenticated]);
+
+  // 自动保存超时时间
+  useEffect(() => {
+    if (isInitialized.current && isAuthenticated && timeoutMinutes >= 1 && timeoutMinutes <= 30) {
+      socket?.emit('admin:setTimeout', timeoutMinutes);
+    }
+  }, [timeoutMinutes, isAuthenticated, socket]);
+
+  // 自动保存回合超时时间
+  useEffect(() => {
+    if (isInitialized.current && isAuthenticated && turnTimeoutSeconds >= 5 && turnTimeoutSeconds <= 300) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      fetch(`${apiUrl}/api/preferences`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ turnTimeoutSeconds })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) {
+          console.error('回合超时时间更新失败:', data.message);
+        }
+      })
+      .catch(error => {
+        console.error('更新回合超时时间失败:', error);
+      });
+    }
+  }, [turnTimeoutSeconds, isAuthenticated]);
+
+  // 自动保存游戏标题
+  useEffect(() => {
+    if (isInitialized.current && isAuthenticated && gameTitle.trim().length > 0) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      fetch(`${apiUrl}/api/preferences`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ gameTitle: gameTitle })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) {
+          console.error('游戏标题更新失败:', data.message);
+        }
+      })
+      .catch(error => {
+        console.error('更新游戏标题失败:', error);
+      });
+    }
+  }, [gameTitle, isAuthenticated]);
+
+  // 自动保存牌数
+  useEffect(() => {
+    if (isInitialized.current && isAuthenticated && cardCount >= 6 && cardCount <= 60) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      fetch(`${apiUrl}/api/preferences`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ defaultCardCount: cardCount })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) {
+          console.error('牌数更新失败:', data.message);
+        }
+      })
+      .catch(error => {
+        console.error('更新牌数失败:', error);
+      });
+    }
+  }, [cardCount, isAuthenticated]);
+
+  // 自动保存牌列数
+  useEffect(() => {
+    if (isInitialized.current && isAuthenticated && columns >= 3 && columns <= 6) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      fetch(`${apiUrl}/api/preferences`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ defaultColumns: columns })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) {
+          console.error('牌列数更新失败:', data.message);
+        }
+      })
+      .catch(error => {
+        console.error('更新牌列数失败:', error);
+      });
+    }
+  }, [columns, isAuthenticated]);
+
+  // 自动保存获胜文字列表
+  useEffect(() => {
+    if (isInitialized.current && isAuthenticated && winMessages.length > 0) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      fetch(`${apiUrl}/api/preferences`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ winMessages })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) {
+          console.error('获胜文字列表更新失败:', data.message);
+        }
+      })
+      .catch(error => {
+        console.error('更新获胜文字列表失败:', error);
+      });
+    }
+  }, [winMessages, isAuthenticated]);
 
   // 处理密码验证
   const handleLogin = (e: React.FormEvent) => {
@@ -41,95 +300,6 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack }) => {
     const value = parseInt(e.target.value, 10);
     if (value >= 1 && value <= 30) {
       setTimeoutMinutes(value);
-    }
-  };
-
-  const handleTimeoutSubmit = () => {
-    socket?.emit('admin:setTimeout', timeoutMinutes);
-    alert(`超时时间已设置为 ${timeoutMinutes} 分钟`);
-  };
-
-  // 处理游戏标题更新
-  const handleGameTitleSubmit = () => {
-    if (gameTitle.trim().length > 0) {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
-      fetch(`${apiUrl}/api/preferences`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ gameTitle: gameTitle })
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.success) {
-          alert(`游戏标题已更新为: ${gameTitle}`);
-        } else {
-          alert('游戏标题更新失败: ' + data.message);
-        }
-      })
-      .catch(error => {
-        console.error('更新游戏标题失败:', error);
-        alert('更新游戏标题失败，请检查网络连接');
-      });
-    } else {
-      alert('游戏标题不能为空');
-    }
-  };
-
-  // 处理牌数更新
-  const handleCardCountSubmit = () => {
-    if (cardCount >= 6 && cardCount <= 60) {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
-      fetch(`${apiUrl}/api/preferences`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ defaultCardCount: cardCount })
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.success) {
-          alert(`牌数已更新为: ${cardCount}`);
-        } else {
-          alert('牌数更新失败: ' + data.message);
-        }
-      })
-      .catch(error => {
-        console.error('更新牌数失败:', error);
-        alert('更新牌数失败，请检查网络连接');
-      });
-    } else {
-      alert('牌数必须在6-60之间');
-    }
-  };
-
-  // 处理牌列数更新
-  const handleColumnsSubmit = () => {
-    if (columns >= 3 && columns <= 6) {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
-      fetch(`${apiUrl}/api/preferences`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ defaultColumns: columns })
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.success) {
-          alert(`牌列数已更新为: ${columns}`);
-        } else {
-          alert('牌列数更新失败: ' + data.message);
-        }
-      })
-      .catch(error => {
-        console.error('更新牌列数失败:', error);
-        alert('更新牌列数失败，请检查网络连接');
-      });
-    } else {
-      alert('牌列数必须在3-6之间');
     }
   };
 
@@ -189,9 +359,26 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack }) => {
           if (data.defaultColumns) {
             setColumns(data.defaultColumns);
           }
+          if (data.winMessages && Array.isArray(data.winMessages)) {
+            setWinMessages(data.winMessages);
+          }
+          if (data.autoRestartSeconds && typeof data.autoRestartSeconds === 'number') {
+            setAutoRestartSeconds(data.autoRestartSeconds);
+          }
+          if (data.drinkParameter && typeof data.drinkParameter === 'number') {
+            setDrinkParameter(data.drinkParameter);
+          }
+          if (data.firstCardDrinkCount && typeof data.firstCardDrinkCount === 'number') {
+            setFirstCardDrinkCount(data.firstCardDrinkCount);
+          }
+          if (data.lastCardDrinkCount && typeof data.lastCardDrinkCount === 'number') {
+            setLastCardDrinkCount(data.lastCardDrinkCount);
+          }
+          isInitialized.current = true;
         })
         .catch(error => {
           console.warn('获取配置失败:', error);
+          isInitialized.current = true;
         });
     }
 
@@ -200,6 +387,19 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack }) => {
       socket?.off('admin:currentTimeout');
     };
   }, [isAuthenticated, socket]);
+
+  // 处理添加获胜文字
+  const handleAddWinMessage = () => {
+    if (newWinMessage.trim().length > 0) {
+      setWinMessages([...winMessages, newWinMessage.trim()]);
+      setNewWinMessage('');
+    }
+  };
+
+  // 处理删除获胜文字
+  const handleDeleteWinMessage = (index: number) => {
+    setWinMessages(winMessages.filter((_, i) => i !== index));
+  };
 
   // 未认证时显示登录界面
   if (!isAuthenticated) {
@@ -260,6 +460,83 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack }) => {
       </div>
 
       <div className="admin-section">
+        <h3>游戏控制</h3>
+        <div className="game-control-setting">
+          <button 
+            className="restart-button admin-restart-button"
+            onClick={handleRestartGame}
+          >
+            重新开始游戏
+          </button>
+          <p className="control-description">点击此按钮将立即重新开始游戏，当前游戏进度将丢失。</p>
+        </div>
+      </div>
+
+      <div className="admin-section">
+        <h3>自动重启时间设置</h3>
+        <div className="auto-restart-setting">
+          <label htmlFor="auto-restart-seconds">自动重启时间：</label>
+          <div className="auto-restart-control">
+            <input
+              type="number"
+              id="auto-restart-seconds"
+              min="5"
+              max="60"
+              value={autoRestartSeconds}
+              onChange={(e) => setAutoRestartSeconds(parseInt(e.target.value) || 10)}
+            />
+            <span className="unit">秒</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-section">
+        <h3>酒杯算法参数设置</h3>
+        <div className="drink-algorithm-setting">
+          <div className="drink-parameter-item">
+            <label htmlFor="drink-parameter">回合摸牌大于：</label>
+            <div className="drink-parameter-control">
+              <input
+                type="number"
+                id="drink-parameter"
+                min="1"
+                max="100"
+                value={drinkParameter}
+                onChange={(e) => setDrinkParameter(parseInt(e.target.value) || 1)}
+              />
+              <label>酒杯数量开始加1</label>
+            </div>
+          </div>
+          <div className="drink-parameter-item">
+            <label htmlFor="first-card-drink-count">第一张牌酒杯数量：</label>
+            <div className="first-card-drink-control">
+              <input
+                type="number"
+                id="first-card-drink-count"
+                min="1"
+                max="100"
+                value={firstCardDrinkCount}
+                onChange={(e) => setFirstCardDrinkCount(parseInt(e.target.value) || 3)}
+              />
+            </div>
+          </div>
+          <div className="drink-parameter-item">
+            <label htmlFor="last-card-drink-count">最后一张牌酒杯增加数量：</label>
+            <div className="last-card-drink-control">
+              <input
+                type="number"
+                id="last-card-drink-count"
+                min="1"
+                max="100"
+                value={lastCardDrinkCount}
+                onChange={(e) => setLastCardDrinkCount(parseInt(e.target.value) || 2)}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-section">
         <h3>超时设置</h3>
         <div className="timeout-setting">
           <label htmlFor="timeout">玩家离线超时时间：</label>
@@ -274,12 +551,20 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack }) => {
             />
             <span className="unit">分钟</span>
           </div>
-          <button 
-            className="save-button"
-            onClick={handleTimeoutSubmit}
-          >
-            保存设置
-          </button>
+        </div>
+        <div className="timeout-setting">
+          <label htmlFor="turn-timeout">回合超时时间：</label>
+          <div className="timeout-control">
+            <input
+              type="number"
+              id="turn-timeout"
+              min="5"
+              max="300"
+              value={turnTimeoutSeconds}
+              onChange={(e) => setTurnTimeoutSeconds(Number(e.target.value))}
+            />
+            <span className="unit">秒</span>
+          </div>
         </div>
       </div>
 
@@ -298,12 +583,6 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack }) => {
               className="game-title-input"
             />
           </div>
-          <button 
-            className="save-button"
-            onClick={handleGameTitleSubmit}
-          >
-            保存设置
-          </button>
         </div>
       </div>
 
@@ -323,12 +602,6 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack }) => {
               className="card-count-slider"
             />
           </div>
-          <button 
-            className="save-button"
-            onClick={handleCardCountSubmit}
-          >
-            保存设置
-          </button>
         </div>
       </div>
 
@@ -347,25 +620,41 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack }) => {
               </button>
             ))}
           </div>
-          <button 
-            className="save-button"
-            onClick={handleColumnsSubmit}
-          >
-            保存设置
-          </button>
         </div>
       </div>
 
       <div className="admin-section">
-        <h3>游戏控制</h3>
-        <div className="game-control-setting">
-          <button 
-            className="restart-button admin-restart-button"
-            onClick={handleRestartGame}
-          >
-            重新开始游戏
-          </button>
-          <p className="control-description">点击此按钮将立即重新开始游戏，当前游戏进度将丢失。</p>
+        <h3>获胜文字设置</h3>
+        <div className="win-messages-setting">
+          <div className="win-messages-list">
+            {winMessages.map((message, index) => (
+              <div key={index} className="win-message-item">
+                <span className="win-message-text">{message}</span>
+                <button
+                  className="delete-button"
+                  onClick={() => handleDeleteWinMessage(index)}
+                >
+                  删除
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="win-message-add">
+            <input
+              type="text"
+              value={newWinMessage}
+              onChange={(e) => setNewWinMessage(e.target.value)}
+              placeholder="输入新的获胜文字"
+              className="win-message-input"
+              onKeyPress={(e) => e.key === 'Enter' && handleAddWinMessage()}
+            />
+            <button
+              className="add-button"
+              onClick={handleAddWinMessage}
+            >
+              添加
+            </button>
+          </div>
         </div>
       </div>
 

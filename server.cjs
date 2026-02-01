@@ -103,13 +103,14 @@ let userPreferences = readConfig() || {
 
 // 全局游戏状态
 let gameState = {
-  id: 1,
+  id:1,
   status: 'waiting', // waiting, playing, ended
   cardCount: 9,
   cards: [],
   gameOver: false,
   winner: null,
-  queueState: null
+  queueState: null,
+  drinkCount: 1
 };
 
 // 中间件
@@ -129,13 +130,22 @@ app.get('/api/preferences', (req, res) => {
 
 // 保存偏好设置
 app.post('/api/preferences', (req, res) => {
-  const { defaultCardCount, defaultColumns, gameTitle } = req.body;
+  const { 
+    defaultCardCount, 
+    defaultColumns, 
+    gameTitle, 
+    winMessages, 
+    autoRestartSeconds, 
+    drinkParameter, 
+    firstCardDrinkCount, 
+    lastCardDrinkCount,
+    turnTimeoutSeconds 
+  } = req.body;
   let updated = false;
   
   // 更新默认牌数量
   if (defaultCardCount && typeof defaultCardCount === 'number' && defaultCardCount >= 6 && defaultCardCount <= 60) {
     userPreferences.defaultCardCount = defaultCardCount;
-    // 更新游戏状态中的牌数量
     gameState.cardCount = defaultCardCount;
     Logger.info('默认牌数量已更新', { defaultCardCount });
     updated = true;
@@ -155,12 +165,51 @@ app.post('/api/preferences', (req, res) => {
     updated = true;
   }
   
+  // 更新获胜文字列表
+  if (winMessages && Array.isArray(winMessages) && winMessages.length > 0) {
+    userPreferences.winMessages = winMessages;
+    Logger.info('获胜文字列表已更新', { winMessages });
+    updated = true;
+  }
+  
+  // 更新自动重启时间
+  if (autoRestartSeconds && typeof autoRestartSeconds === 'number' && autoRestartSeconds >= 5 && autoRestartSeconds <= 60) {
+    userPreferences.autoRestartSeconds = autoRestartSeconds;
+    Logger.info('自动重启时间已更新', { autoRestartSeconds });
+    updated = true;
+  }
+  
+  // 更新喝酒参数
+  if (drinkParameter && typeof drinkParameter === 'number' && drinkParameter >= 1 && drinkParameter <= 100) {
+    userPreferences.drinkParameter = drinkParameter;
+    Logger.info('喝酒参数已更新', { drinkParameter });
+    updated = true;
+  }
+  
+  // 更新第一种算法参数
+  if (firstCardDrinkCount && typeof firstCardDrinkCount === 'number' && firstCardDrinkCount >= 1 && firstCardDrinkCount <= 100) {
+    userPreferences.firstCardDrinkCount = firstCardDrinkCount;
+    Logger.info('第一种算法参数已更新', { firstCardDrinkCount });
+    updated = true;
+  }
+  
+  // 更新第三种算法参数
+  if (lastCardDrinkCount && typeof lastCardDrinkCount === 'number' && lastCardDrinkCount >= 1 && lastCardDrinkCount <= 100) {
+    userPreferences.lastCardDrinkCount = lastCardDrinkCount;
+    Logger.info('第三种算法参数已更新', { lastCardDrinkCount });
+    updated = true;
+  }
+  
+  // 更新回合超时时间
+  if (turnTimeoutSeconds && typeof turnTimeoutSeconds === 'number' && turnTimeoutSeconds >= 5 && turnTimeoutSeconds <= 300) {
+    userPreferences.turnTimeoutSeconds = turnTimeoutSeconds;
+    Logger.info('回合超时时间已更新', { turnTimeoutSeconds });
+    updated = true;
+  }
+  
   if (updated) {
-    // 保存配置到文件
     writeConfig(userPreferences);
-    // 广播偏好设置更新给所有客户端
     io.emit('preferencesUpdated', userPreferences);
-    // 同时广播游戏状态更新
     io.emit('gameState', gameState);
     res.json({ success: true, data: userPreferences });
   } else {
@@ -176,7 +225,9 @@ class PlayerQueue {
     this.playerLastSeen = new Map(); // playerId -> last seen timestamp
     this.OFFLINE_TIMEOUT = 3 * 60 * 1000; // 3分钟超时
     this.turnPlayer = null; // 当前回合玩家
-    this.turnFlipCount = 0; // 当前回合翻牌数
+    this.turnFlipCount = 0;
+    this.turnTimer = null;
+    this.turnCountdown = 0;
   }
 
   // 添加玩家到队列
@@ -223,6 +274,33 @@ class PlayerQueue {
     if (!this.turnPlayer && this.players.length > 0) {
       this.turnPlayer = this.players[0];
       this.turnFlipCount = 0;
+      
+      if (this.turnTimer) {
+        clearInterval(this.turnTimer);
+      }
+      
+      this.turnCountdown = userPreferences.turnTimeoutSeconds || 10;
+      io.emit('turnCountdownUpdated', { countdown: this.turnCountdown });
+      
+      this.turnTimer = setInterval(() => {
+        this.turnCountdown--;
+        io.emit('turnCountdownUpdated', { countdown: this.turnCountdown });
+        
+        if (this.turnCountdown <= 0) {
+          clearInterval(this.turnTimer);
+          this.turnTimer = null;
+          
+          // 检查游戏是否已经结束
+          if (gameState.gameOver) {
+            Logger.info('游戏已结束，跳过自动操作');
+            return;
+          }
+          
+          // 回合倒计时结束，不再执行自动操作
+          Logger.info('回合倒计时结束，不执行自动操作');
+        }
+      }, 1000);
+      
       Logger.info('设置当前回合玩家', { playerId: this.turnPlayer.id, nickname: this.turnPlayer.nickname });
     }
     
@@ -240,10 +318,7 @@ class PlayerQueue {
       
       Logger.info('玩家断开连接', { playerId: player.id, nickname: player.nickname });
       
-      // 检查是否需要更新当前回合玩家
-      if (this.turnPlayer && this.turnPlayer.id === player.id) {
-        this.nextTurn();
-      }
+      // 不再自动进入下一回合，即使断开连接的是当前回合玩家
     }
     return this.getQueueState();
   }
@@ -262,14 +337,39 @@ class PlayerQueue {
   // 下一回合
   nextTurn() {
     if (this.players.length > 0) {
-      // 移动当前回合玩家到队尾
       if (this.turnPlayer) {
         this.movePlayerToEnd(this.turnPlayer.id);
       }
       
-      // 设置新的当前回合玩家
       this.turnPlayer = this.players[0];
       this.turnFlipCount = 0;
+      
+      if (this.turnTimer) {
+        clearInterval(this.turnTimer);
+      }
+      
+      this.turnCountdown = userPreferences.turnTimeoutSeconds || 10;
+      io.emit('turnCountdownUpdated', { countdown: this.turnCountdown });
+      
+      this.turnTimer = setInterval(() => {
+        this.turnCountdown--;
+        io.emit('turnCountdownUpdated', { countdown: this.turnCountdown });
+        
+        if (this.turnCountdown <= 0) {
+          clearInterval(this.turnTimer);
+          this.turnTimer = null;
+          
+          // 检查游戏是否已经结束
+          if (gameState.gameOver) {
+            Logger.info('游戏已结束，跳过自动操作');
+            return;
+          }
+          
+          // 回合倒计时结束，不再执行自动操作
+          Logger.info('回合倒计时结束，不执行自动操作');
+        }
+      }, 1000);
+      
       Logger.info('新回合开始', { playerId: this.turnPlayer.id, nickname: this.turnPlayer.nickname });
       return true;
     }
@@ -323,9 +423,20 @@ class PlayerQueue {
     for (const playerId of timeoutPlayers) {
       const playerIndex = this.players.findIndex(p => p.id === playerId);
       if (playerIndex !== -1) {
-        Logger.info('玩家超时被清理', { playerId });
-        // 超时玩家移到队尾
-        this.movePlayerToEnd(playerId);
+        const player = this.players[playerIndex];
+        Logger.info('玩家超时被踢出队列', { playerId, nickname: player.nickname });
+        
+        // 从队列中移除玩家
+        this.players.splice(playerIndex, 1);
+        
+        // 清理相关数据
+        this.playerSockets.delete(player.socketId);
+        this.playerLastSeen.delete(playerId);
+        
+        // 检查是否需要更新当前回合玩家
+        if (this.turnPlayer && this.turnPlayer.id === playerId) {
+          this.nextTurn();
+        }
       }
     }
   }
@@ -347,9 +458,17 @@ class PlayerQueue {
       this.playerSockets.delete(player.socketId);
       this.playerLastSeen.delete(playerId);
       
-      // 检查是否需要更新当前回合玩家
+      // 检查是否需要取消当前回合相关属性
       if (this.turnPlayer && this.turnPlayer.id === playerId) {
-        this.nextTurn();
+        this.turnPlayer = null;
+        this.turnFlipCount = 0;
+        if (this.turnTimer) {
+          clearInterval(this.turnTimer);
+          this.turnTimer = null;
+        }
+        this.turnCountdown = 0;
+        io.emit('turnCountdownUpdated', { countdown: 0 });
+        Logger.info('取消当前回合相关属性', { playerId, nickname: player.nickname });
       }
       
       return true;
@@ -395,7 +514,8 @@ function initializeGame(cardCount) {
     cards: newCards,
     gameOver: false,
     winner: null,
-    queueState: playerQueue.getQueueState()
+    queueState: playerQueue.getQueueState(),
+    drinkCount: 1
   };
   
   Logger.info('游戏初始化成功', { gameState });
@@ -442,6 +562,44 @@ io.on('connection', (socket) => {
     }
     
     initializeGame(cardCount);
+    
+    // 重新获取当前游戏队列，把当前回合给到1号位的玩家
+    if (playerQueue.players.length > 0) {
+      playerQueue.turnPlayer = playerQueue.players[0];
+      playerQueue.turnFlipCount = 0;
+      
+      if (playerQueue.turnTimer) {
+        clearInterval(playerQueue.turnTimer);
+      }
+      
+      playerQueue.turnCountdown = userPreferences.turnTimeoutSeconds || 10;
+      io.emit('turnCountdownUpdated', { countdown: playerQueue.turnCountdown });
+      
+      playerQueue.turnTimer = setInterval(() => {
+        playerQueue.turnCountdown--;
+        io.emit('turnCountdownUpdated', { countdown: playerQueue.turnCountdown });
+        
+        if (playerQueue.turnCountdown <= 0) {
+          clearInterval(playerQueue.turnTimer);
+          playerQueue.turnTimer = null;
+          
+          // 检查游戏是否已经结束
+          if (gameState.gameOver) {
+            Logger.info('游戏已结束，跳过自动操作');
+            return;
+          }
+          
+          // 回合倒计时结束，不再执行自动操作
+          Logger.info('回合倒计时结束，不执行自动操作');
+        }
+      }, 1000);
+      
+      Logger.info('游戏启动，设置当前回合玩家为1号位', { playerId: playerQueue.turnPlayer.id, nickname: playerQueue.turnPlayer.nickname });
+      
+      // 更新游戏状态
+      gameState.queueState = playerQueue.getQueueState();
+      io.emit('gameState', gameState);
+    }
   });
 
   // 处理卡片翻转
@@ -466,24 +624,141 @@ io.on('connection', (socket) => {
     const flipCount = playerQueue.incrementFlipCount();
     Logger.info('玩家翻牌', { playerId, cardId, flipCount });
     
-    // 更新游戏状态
+    // 重置倒计时
+    if (playerQueue.turnTimer) {
+      clearInterval(playerQueue.turnTimer);
+    }
+    
+    playerQueue.turnCountdown = userPreferences.turnTimeoutSeconds || 10;
+    io.emit('turnCountdownUpdated', { countdown: playerQueue.turnCountdown });
+    
+    playerQueue.turnTimer = setInterval(() => {
+      playerQueue.turnCountdown--;
+      io.emit('turnCountdownUpdated', { countdown: playerQueue.turnCountdown });
+      
+      if (playerQueue.turnCountdown <= 0) {
+        clearInterval(playerQueue.turnTimer);
+        playerQueue.turnTimer = null;
+        
+        // 检查游戏是否已经结束
+        if (gameState.gameOver) {
+          Logger.info('游戏已结束，跳过自动翻牌和结束回合');
+          return;
+        }
+        
+        // 随机翻开一张牌
+        const unflippedCards = gameState.cards.filter(c => !c.isFlipped);
+        if (unflippedCards.length > 0) {
+          const randomCard = unflippedCards[Math.floor(Math.random() * unflippedCards.length)];
+          randomCard.isFlipped = true;
+          
+          // 计算酒杯数量
+          let drinkCount = gameState.drinkCount;
+          const result = playerQueue.turnFlipCount - userPreferences.drinkParameter;
+          if (result > 0) {
+            drinkCount = gameState.drinkCount + 1;
+            gameState.drinkCount = drinkCount;
+          }
+          
+          // 检查是否是境哥牌
+          if (randomCard.isJingCard) {
+            gameState.gameOver = true;
+            gameState.status = 'ended';
+            gameState.winner = playerQueue.turnPlayer;
+            
+            const allCardsUnflipped = gameState.cards.every(c => !c.isFlipped || c.id === randomCard.id);
+            if (playerQueue.turnFlipCount === 1 && allCardsUnflipped) {
+              drinkCount = userPreferences.firstCardDrinkCount;
+              gameState.drinkCount = drinkCount;
+            } else {
+              const unflippedCardsAfter = gameState.cards.filter(c => !c.isFlipped && c.id !== randomCard.id);
+              if (unflippedCardsAfter.length === 0) {
+                drinkCount = gameState.drinkCount + userPreferences.lastCardDrinkCount;
+                gameState.drinkCount = drinkCount;
+              }
+            }
+            
+            if (userPreferences.winMessages && userPreferences.winMessages.length > 0) {
+              const randomIndex = Math.floor(Math.random() * userPreferences.winMessages.length);
+              gameState.winMessage = userPreferences.winMessages[randomIndex];
+            }
+            
+            Logger.info('境哥牌被找到，游戏结束', { cardId: randomCard.id, winner: playerQueue.turnPlayer, drinkCount });
+            io.emit('jingCardFound', {
+              player: playerQueue.turnPlayer,
+              flipCount: playerQueue.turnFlipCount,
+              drinkCount: drinkCount
+            });
+            
+            gameState.queueState = playerQueue.getQueueState();
+            io.emit('gameState', gameState);
+            Logger.info('倒计时结束，随机翻开一张牌', { cardId: randomCard.id, drinkCount });
+          } else {
+            gameState.queueState = playerQueue.getQueueState();
+            io.emit('gameState', gameState);
+            Logger.info('倒计时结束，随机翻开一张牌', { cardId: randomCard.id, drinkCount });
+            
+            // 结束当前回合
+            playerQueue.nextTurn();
+          }
+        } else {
+          // 结束当前回合
+          playerQueue.nextTurn();
+        }
+      }
+    }, 1000);
+    
+    let drinkCount = gameState.drinkCount;
+    
+    const result = flipCount - userPreferences.drinkParameter;
+    if (result > 0) {
+      drinkCount = gameState.drinkCount + 1;
+      gameState.drinkCount = drinkCount;
+      Logger.info('酒杯数量增加', { flipCount, drinkParameter: userPreferences.drinkParameter, result, drinkCount });
+    }
+    
     const updatedCards = gameState.cards.map(card => {
       if (card.id === cardId && !card.isFlipped) {
-        // 检查是否是境哥牌
         if (card.isJingCard) {
-          // 游戏结束
           gameState.gameOver = true;
           gameState.status = 'ended';
-          gameState.winner = playerQueue.turnPlayer; // 设置赢家
-          Logger.info('境哥牌被找到，游戏结束', { socketId: socket.id, cardId, winner: playerQueue.turnPlayer });
+          gameState.winner = playerQueue.turnPlayer;
           
-          // 广播赢家信息
+          const allCardsUnflipped = gameState.cards.every(c => !c.isFlipped || c.id === cardId);
+          if (flipCount === 1 && allCardsUnflipped) {
+            drinkCount = userPreferences.firstCardDrinkCount;
+            gameState.drinkCount = drinkCount;
+            Logger.info('所有牌都还没翻，第一张牌就摸到境哥牌，酒杯数量', { drinkCount });
+          } else {
+            const unflippedCards = gameState.cards.filter(c => !c.isFlipped && c.id !== cardId);
+            if (unflippedCards.length === 0) {
+              drinkCount = gameState.drinkCount + userPreferences.lastCardDrinkCount;
+              gameState.drinkCount = drinkCount;
+              Logger.info('摸到最后一张牌是境哥牌，酒杯数量+' + userPreferences.lastCardDrinkCount, { drinkCount });
+            }
+          }
+          
+          if (userPreferences.winMessages && userPreferences.winMessages.length > 0) {
+            const randomIndex = Math.floor(Math.random() * userPreferences.winMessages.length);
+            gameState.winMessage = userPreferences.winMessages[randomIndex];
+            Logger.info('随机选择获胜文字', { winMessage: gameState.winMessage });
+          }
+          
+          Logger.info('境哥牌被找到，游戏结束', { socketId: socket.id, cardId, winner: playerQueue.turnPlayer, drinkCount });
+          
           io.emit('jingCardFound', {
             player: playerQueue.turnPlayer,
-            flipCount: flipCount
+            flipCount: flipCount,
+            drinkCount: drinkCount
           });
-        } else {
-          Logger.debug('普通牌被翻转', { socketId: socket.id, cardId });
+
+          if (playerQueue.turnPlayer && !playerQueue.turnPlayer.isActive) {
+            Logger.info('当前回合玩家离线，5秒后自动重新启动游戏', { playerId: playerQueue.turnPlayer.id, nickname: playerQueue.turnPlayer.nickname });
+            setTimeout(() => {
+              Logger.info('自动重新启动游戏');
+              initializeGame(gameState.cardCount);
+            }, 5000);
+          }
         }
         return { ...card, isFlipped: true };
       }
@@ -537,14 +812,54 @@ io.on('connection', (socket) => {
     const finalCardCount = cardCount || gameState.cardCount;
     Logger.info('收到重新开始游戏请求', { socketId: socket.id, cardCount: finalCardCount, playerId });
     
-    // 检查权限
-    if (!playerQueue.hasPermission(playerId)) {
+    // 游戏结束状态时不检查权限，允许任何玩家重新开始游戏
+    // 只在游戏进行中时检查权限
+    if (!gameState.gameOver && playerId && playerId !== 'admin' && playerQueue.turnPlayer && playerQueue.turnPlayer.id !== playerId) {
       Logger.warn('无权限重新开始游戏', { socketId: socket.id, playerId });
       socket.emit('error', { message: '不是你的回合，无法重新开始游戏' });
       return;
     }
     
+    playerQueue.turnFlipCount = 0;
     initializeGame(finalCardCount);
+    
+    // 重新获取当前游戏队列，把当前回合给到1号位的玩家
+    if (playerQueue.players.length > 0) {
+      playerQueue.turnPlayer = playerQueue.players[0];
+      playerQueue.turnFlipCount = 0;
+      
+      if (playerQueue.turnTimer) {
+        clearInterval(playerQueue.turnTimer);
+      }
+      
+      playerQueue.turnCountdown = userPreferences.turnTimeoutSeconds || 10;
+      io.emit('turnCountdownUpdated', { countdown: playerQueue.turnCountdown });
+      
+      playerQueue.turnTimer = setInterval(() => {
+        playerQueue.turnCountdown--;
+        io.emit('turnCountdownUpdated', { countdown: playerQueue.turnCountdown });
+        
+        if (playerQueue.turnCountdown <= 0) {
+          clearInterval(playerQueue.turnTimer);
+          playerQueue.turnTimer = null;
+          
+          // 检查游戏是否已经结束
+          if (gameState.gameOver) {
+            Logger.info('游戏已结束，跳过自动操作');
+            return;
+          }
+          
+          // 回合倒计时结束，不再执行自动操作
+          Logger.info('回合倒计时结束，不执行自动操作');
+        }
+      }, 1000);
+      
+      Logger.info('游戏重新启动，设置当前回合玩家为1号位', { playerId: playerQueue.turnPlayer.id, nickname: playerQueue.turnPlayer.nickname });
+      
+      // 更新游戏状态
+      gameState.queueState = playerQueue.getQueueState();
+      io.emit('gameState', gameState);
+    }
   });
 
   // 心跳更新
@@ -613,8 +928,25 @@ io.on('connection', (socket) => {
         const player = playerQueue.players[playerIndex];
         Logger.info('管理员踢走玩家', { playerId, nickname: player.nickname });
         
+        // 检查是否需要取消当前回合相关属性
+        if (playerQueue.turnPlayer && playerQueue.turnPlayer.id === playerId) {
+          playerQueue.turnPlayer = null;
+          playerQueue.turnFlipCount = 0;
+          if (playerQueue.turnTimer) {
+            clearInterval(playerQueue.turnTimer);
+            playerQueue.turnTimer = null;
+          }
+          playerQueue.turnCountdown = 0;
+          io.emit('turnCountdownUpdated', { countdown: 0 });
+          Logger.info('取消当前回合相关属性', { playerId, nickname: player.nickname });
+        }
+        
         // 从队列中移除玩家
         playerQueue.players.splice(playerIndex, 1);
+        
+        // 清理相关数据
+        playerQueue.playerSockets.delete(player.socketId);
+        playerQueue.playerLastSeen.delete(playerId);
         
         // 更新游戏状态
         gameState.queueState = playerQueue.getQueueState();
