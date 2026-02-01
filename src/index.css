@@ -830,10 +830,14 @@ button:focus-visible {
 }
 
 .jing-card-buttons {
-  margin-top: 2rem;
+  position: fixed;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   gap: 1rem;
   justify-content: center;
+  z-index: 1000;
 }
 
 .jing-card-buttons .restart-button {
@@ -990,6 +994,31 @@ button:focus-visible {
   font-size: 14px;
   letter-spacing: 0.02em;
   line-height: 1.4;
+  flex-wrap: wrap;
+}
+
+.countdown-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.countdown-toggle .clock-icon {
+  width: 18px;
+  height: 18px;
+  color: #667eea;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.countdown-toggle .clock-icon:hover {
+  transform: scale(1.1);
+}
+
+.countdown-toggle .countdown-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: #667eea;
 }
 
 .turn-info .flip-count,
@@ -1077,7 +1106,6 @@ button:focus-visible {
 .current-player {
   font-size: 28px;
   font-weight: 700;
-  font-family: 'Brush Script MT', 'Comic Sans MS', 'Lucida Handwriting', cursive, sans-serif;
   color: #667eea;
   padding: 14px 28px;
   border-radius: 20px;
@@ -1085,8 +1113,6 @@ button:focus-visible {
   box-shadow: none;
   display: inline-block;
   letter-spacing: 1px;
-  text-shadow: 2px 2px 4px rgba(102, 126, 234, 0.2);
-  transform: rotate(-2deg);
   transition: all 0.3s ease;
 }
 
@@ -2072,6 +2098,10 @@ input:disabled {
 
 /* 手机端布局优化 */
 @media (max-width: 767px) {
+  .current-player {
+    font-size: 14px;
+  }
+  
   .flip-card-game {
     flex-direction: column;
     padding: 1rem;
@@ -2158,6 +2188,20 @@ input:disabled {
     align-items: center;
     justify-content: space-between;
     padding: 10px 12px;
+    font-size: 13px;
+    flex-wrap: wrap;
+  }
+  
+  .countdown-toggle {
+    gap: 6px;
+  }
+  
+  .countdown-toggle .clock-icon {
+    width: 16px;
+    height: 16px;
+  }
+  
+  .countdown-toggle .countdown-text {
     font-size: 13px;
   }
   

@@ -4,6 +4,47 @@ const { Server } = require('socket.io');
 const fs = require('fs');
 const path = require('path');
 
+// 读取并随机选择图片
+function selectRandomImages() {
+  try {
+    const publicDir = path.join(__dirname, 'public');
+    
+    // 读取backcard目录
+    const backcardDir = path.join(publicDir, 'png', 'backcard');
+    const backcardImages = fs.readdirSync(backcardDir).filter(file => {
+      return /\.(jpg|jpeg|png|gif|svg)$/i.test(file);
+    }).map(file => `/png/backcard/${file}`);
+    
+    // 读取endcard目录
+    const endcardDir = path.join(publicDir, 'png', 'endcard');
+    const endcardImages = fs.readdirSync(endcardDir).filter(file => {
+      return /\.(jpg|jpeg|png|gif|svg)$/i.test(file);
+    }).map(file => `/png/endcard/${file}`);
+    
+    // 从backcard目录随机选择3张图片
+    const shuffledBackcards = [...backcardImages].sort(() => Math.random() - 0.5);
+    const selectedBackcards = shuffledBackcards.slice(0, 3);
+    
+    // 从endcard目录随机选择1张图片
+    let selectedEndcard = '';
+    if (endcardImages.length > 0) {
+      selectedEndcard = endcardImages[Math.floor(Math.random() * endcardImages.length)];
+    }
+    
+    return {
+      backcardImages: selectedBackcards,
+      endcardImage: selectedEndcard
+    };
+  } catch (error) {
+    Logger.error('选择随机图片失败', { error: error.message });
+    // 回退到默认图片
+    return {
+      backcardImages: ['/png/backcard/2.jpg'],
+      endcardImage: '/png/endcard/1.jpg'
+    };
+  }
+}
+
 // 日志系统
 class Logger {
   static levels = {
@@ -110,7 +151,8 @@ let gameState = {
   gameOver: false,
   winner: null,
   queueState: null,
-  drinkCount: 1
+  drinkCount: 1,
+  showCountdown: false
 };
 
 // 中间件
@@ -507,6 +549,9 @@ function initializeGame(cardCount) {
     });
   }
   
+  // 随机选择图片
+  const selectedImages = selectRandomImages();
+  
   gameState = {
     ...gameState,
     status: 'playing',
@@ -515,7 +560,8 @@ function initializeGame(cardCount) {
     gameOver: false,
     winner: null,
     queueState: playerQueue.getQueueState(),
-    drinkCount: 1
+    drinkCount: 1,
+    selectedImages: selectedImages
   };
   
   Logger.info('游戏初始化成功', { gameState });
@@ -893,6 +939,14 @@ io.on('connection', (socket) => {
     }
   });
 
+  // 处理倒计时显示状态切换
+  socket.on('toggleCountdown', (data) => {
+    Logger.info('倒计时显示状态切换', { showCountdown: data.showCountdown });
+    gameState.showCountdown = data.showCountdown;
+    // 广播游戏状态给所有玩家
+    io.emit('gameState', gameState);
+  });
+
   // 管理相关事件
   socket.on('admin:authenticated', () => {
     Logger.info('管理员认证成功', { socketId: socket.id });
@@ -1011,6 +1065,33 @@ io.on('connection', (socket) => {
     // 广播队列状态给所有玩家
     io.emit('queueUpdated', queueState);
   });
+});
+
+// 获取图片列表的API端点
+app.get('/api/images', (req, res) => {
+  try {
+    const publicDir = path.join(__dirname, 'public');
+    
+    // 读取backcard目录
+    const backcardDir = path.join(publicDir, 'png', 'backcard');
+    const backcardImages = fs.readdirSync(backcardDir).filter(file => {
+      return /\.(jpg|jpeg|png|gif|svg)$/i.test(file);
+    }).map(file => `/png/backcard/${file}`);
+    
+    // 读取endcard目录
+    const endcardDir = path.join(publicDir, 'png', 'endcard');
+    const endcardImages = fs.readdirSync(endcardDir).filter(file => {
+      return /\.(jpg|jpeg|png|gif|svg)$/i.test(file);
+    }).map(file => `/png/endcard/${file}`);
+    
+    res.json({
+      backcard: backcardImages,
+      endcard: endcardImages
+    });
+  } catch (error) {
+    Logger.error('获取图片列表失败', { error: error.message });
+    res.status(500).json({ error: '获取图片列表失败' });
+  }
 });
 
 // 启动服务器

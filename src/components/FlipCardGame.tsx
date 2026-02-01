@@ -14,6 +14,11 @@ interface GameState {
   queueState: QueueState | null;
   winMessage: string | null;
   drinkCount: number;
+  selectedImages?: {
+    backcardImages: string[];
+    endcardImage: string;
+  };
+  showCountdown?: boolean;
 }
 
 interface QueueState {
@@ -207,6 +212,12 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
 
   useEffect(() => {
     if (gameState) {
+      console.log('游戏状态变化:', { 
+        gameOver: gameState.gameOver, 
+        status: gameState.status,
+        queueState: gameState.queueState,
+        winMessage: gameState.winMessage
+      });
       
       if (gameState.queueState) {
         const isTurn = !!(gameState.queueState.turnPlayer && 
@@ -216,6 +227,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       }
       
       if (gameState.gameOver && gameState.status === 'ended') {
+        console.log('游戏结束，开始倒计时:', autoRestartSeconds);
         setShowJingCard(true);
         if (gameState.winMessage) {
           setRandomWinMessage(gameState.winMessage);
@@ -224,7 +236,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
         // 不管当前回合玩家是否离线，或者游戏队列是否有玩家，都自动重新开始游戏
         setCountdown(autoRestartSeconds);
         countdownTimerRef.current = setInterval(() => {
-          setCountdown(prev => {
+          setCountdown((prev: number) => {
             if (prev <= 1) {
               clearInterval(countdownTimerRef.current!);
               initializeGame();
@@ -359,7 +371,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
                     className="nickname-input"
                     placeholder="输入昵称"
                     autoFocus
-                    onKeyPress={(e) => e.key === 'Enter' && onNicknameChange && onNicknameChange(null)}
+                    onKeyDown={(e) => e.key === 'Enter' && onNicknameChange && onNicknameChange(null)}
                   />
                   <button onClick={() => onNicknameChange && onNicknameChange(null)} className="save-button">保存</button>
                   <button onClick={onCancelEditNickname} className="cancel-button">取消</button>
@@ -381,10 +393,34 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
           {gameState.queueState && (
             <div className="turn-info">
               <div className="flip-count">
-                本回合翻牌数: {currentFlipCount}
+                翻牌:{currentFlipCount}
               </div>
               <div className="drink-count">
-                酒杯数量: {gameState.drinkCount}
+                酒量:{gameState.drinkCount}
+              </div>
+              <div className="countdown-toggle">
+                <svg 
+                  className="clock-icon" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  xmlns="http://www.w3.org/2000/svg"
+                  onClick={() => socket && socket.emit('toggleCountdown', { showCountdown: !gameState.showCountdown })}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                  <path d="M12 6V12L16 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M12 2V4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M12 20V22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M2 12H4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M20 12H22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M4.93 4.93L6.34 6.34" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M17.66 17.66L19.07 19.07" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M4.93 19.07L6.34 17.66" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M17.66 6.34L19.07 4.93" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                {gameState.showCountdown && (
+                  <span className="countdown-text">{turnCountdown}s</span>
+                )}
               </div>
             </div>
           )}
@@ -418,21 +454,6 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
                   结束回合
                 </button>
               )}
-              <>
-                <svg className="clock-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
-                  <path d="M12 6V12L16 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <path d="M12 2V4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <path d="M12 20V22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <path d="M2 12H4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <path d="M20 12H22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <path d="M4.93 4.93L6.34 6.34" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <path d="M17.66 17.66L19.07 19.07" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <path d="M4.93 19.07L6.34 17.66" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <path d="M17.66 6.34L19.07 4.93" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-                <span className="countdown-text">{turnCountdown}s</span>
-              </>
             </div>
           ) : (
             <div className="waiting-message">
@@ -447,7 +468,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
             gridTemplateColumns: `repeat(${getOptimalColumns()}, 1fr)`
           }}
         >
-          {gameState.cards?.map(card => (
+          {gameState.cards?.map((card, index) => (
             <div
               key={card.id}
               className={`card ${card.isFlipped ? 'flipped' : ''} ${isUserInQueue && !isMyTurn ? 'disabled' : ''}`}
@@ -456,13 +477,13 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
               <div className="card-inner">
                 {!card.isFlipped ? (
                   <div className="card-front">
-                    <img src="/png/2.jpg" alt="牌背" />
+                    <img src={gameState.selectedImages?.backcardImages[index % (gameState.selectedImages?.backcardImages.length || 1)] || '/png/backcard/2.jpg'} alt="牌背" />
                   </div>
                 ) : null}
                 {!card.isFlipped && (
                   <div className="card-back">
                     {card.isJingCard ? (
-                      <img src="/png/1.jpg" alt="境哥牌" />
+                      <img src={gameState.selectedImages?.endcardImage || '/png/endcard/1.jpg'} alt="境哥牌" />
                     ) : (
                       <div className="empty-card"></div>
                     )}
@@ -477,7 +498,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       {showJingCard && (
         <div className="jing-card-overlay">
           <div className="jing-card-container">
-            <img src="/png/1.jpg" alt="境哥牌" className="jing-card-large" />
+            <img src={gameState.selectedImages?.endcardImage || '/png/endcard/1.jpg'} alt="境哥牌" className="jing-card-large" />
             <div className="jing-card-text">
               <h3>{randomWinMessage || '恭喜你找到境哥牌！'}</h3>
               <p className="drink-punishment">{gameState.queueState?.turnPlayer?.nickname || '玩家'}罚酒{gameState.drinkCount}杯</p>
@@ -488,7 +509,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
                 className="restart-button"
                 disabled={!isMyTurn}
               >
-                {countdown > 0 ? `重新开始 (${countdown}秒)` : '重新开始'}
+                {countdown > 0 ? `${countdown}秒后重新开始` : '重新开始'}
               </button>
             </div>
           </div>
