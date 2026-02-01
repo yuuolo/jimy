@@ -19,6 +19,11 @@ interface GameState {
     endcardImage: string;
   };
   showCountdown?: boolean;
+  item?: {
+    hasItem: boolean;
+    itemPlayerId: string | null;
+    itemUsed: boolean;
+  };
 }
 
 interface QueueState {
@@ -78,6 +83,8 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
   const [randomWinMessage, setRandomWinMessage] = useState('');
   const [countdown, setCountdown] = useState(0);
   const [turnCountdown, setTurnCountdown] = useState(0);
+  const [logoImage, setLogoImage] = useState<{ src: string; x: number; y: number } | null>(null);
+  const [isSelectingPlayer, setIsSelectingPlayer] = useState(false);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const flipAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -140,11 +147,23 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
     }
   }, [gameState.cards?.length, columns]);
 
-  const initializeGame = useCallback(() => {
-    if (socket) {
-      socket.emit('restartGame', { cardCount, playerId: user.id });
-    }
-  }, [socket, cardCount, user.id]);
+  const handleJingCardClick = useCallback((e: React.MouseEvent<HTMLImageElement>) => {
+    if (!socket) return;
+    
+    const logoImages = [
+      '/png/logo/paipai.jpg'
+    ];
+    const randomLogo = logoImages[Math.floor(Math.random() * logoImages.length)];
+    
+    const relativeX = (e.clientX / window.innerWidth) * 100;
+    const relativeY = (e.clientY / window.innerHeight) * 100;
+    
+    socket.emit('jingCardClick', {
+      src: randomLogo,
+      relativeX,
+      relativeY
+    });
+  }, [socket]);
 
   const handleFlipCard = useCallback((cardId: number) => {
     if (gameState.gameOver) return;
@@ -162,6 +181,9 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
     
     if (clickedCard?.isJingCard) {
       playAudio(jingAudioRef);
+      if (socket) {
+        socket.emit('jingCardAudio', { playerId: user.id });
+      }
     } else {
       playAudio(flipAudioRef);
     }
@@ -183,8 +205,10 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
     }
     
     playAudio(restartAudioRef);
-    initializeGame();
-  }, [isMyTurn, playAudio, initializeGame]);
+    if (socket) {
+      socket.emit('restartGame', { cardCount, playerId: user.id });
+    }
+  }, [isMyTurn, playAudio, socket, cardCount, user.id]);
 
   const handleEndTurn = useCallback(() => {
     if (socket && isMyTurn && currentFlipCount > 0) {
@@ -197,7 +221,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       socket.emit('exitQueue', user.id);
       console.log('已发送退出队列请求');
     }
-  }, [socket, user.id]);
+  }, [socket, user.id, playAudio, jingAudioRef]);
 
   const handleJoinQueue = useCallback(() => {
     if (socket && user.id) {
@@ -239,7 +263,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
           setCountdown((prev: number) => {
             if (prev <= 1) {
               clearInterval(countdownTimerRef.current!);
-              initializeGame();
+              handleRestartGame();
               return 0;
             }
             return prev - 1;
@@ -260,7 +284,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
         }
       }
     }
-  }, [gameState, user.id, isMyTurn, initializeGame, autoRestartSeconds]);
+  }, [gameState, user.id, isMyTurn, handleRestartGame, autoRestartSeconds]);
 
   useEffect(() => {
     if (gameState.gameOver && gameState.status === 'ended' && audioRef.current) {
@@ -305,18 +329,53 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       console.error('服务器错误:', error);
     };
 
+    const handleJingCardClick = (data: any) => {
+      console.log('境哥牌被点击:', data);
+      setLogoImage({
+        src: data.src,
+        x: data.relativeX,
+        y: data.relativeY
+      });
+      
+      setTimeout(() => {
+        setLogoImage(null);
+      }, 2000);
+    };
+
+    const handleJingCardAudio = (data: any) => {
+      console.log('播放境哥牌音频:', data);
+      playAudio(jingAudioRef);
+    };
+
+    const handleItemObtained = (data: any) => {
+      console.log('获得道具:', data);
+    };
+
+    const handleItemUsed = (data: any) => {
+      console.log('道具已使用:', data);
+      setIsSelectingPlayer(false);
+    };
+
     socket.on('jingCardFound', handleJingCardFound);
     socket.on('turnEnded', handleTurnEnded);
     socket.on('turnCountdownUpdated', handleTurnCountdownUpdated);
     socket.on('error', handleError);
+    socket.on('jingCardClick', handleJingCardClick);
+    socket.on('jingCardAudio', handleJingCardAudio);
+    socket.on('itemObtained', handleItemObtained);
+    socket.on('itemUsed', handleItemUsed);
 
     return () => {
       socket.off('jingCardFound', handleJingCardFound);
       socket.off('turnEnded', handleTurnEnded);
       socket.off('turnCountdownUpdated', handleTurnCountdownUpdated);
       socket.off('error', handleError);
+      socket.off('jingCardClick', handleJingCardClick);
+      socket.off('jingCardAudio', handleJingCardAudio);
+      socket.off('itemObtained', handleItemObtained);
+      socket.off('itemUsed', handleItemUsed);
     };
-  }, [socket, user.id]);
+  }, [socket, user.id, playAudio, jingAudioRef]);
 
   useEffect(() => {
     const isMobile = window.innerWidth < 768;
@@ -422,6 +481,19 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
                   <span className="countdown-text">{turnCountdown}s</span>
                 )}
               </div>
+              {gameState.item?.hasItem && gameState.item.itemPlayerId === user.id && !gameState.item.itemUsed && (
+                <div className="item-button-container">
+                  <button 
+                    className="item-button"
+                    onClick={() => setIsSelectingPlayer(true)}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="currentColor" />
+                    </svg>
+                    点名
+                  </button>
+                </div>
+              )}
             </div>
           )}
           
@@ -498,7 +570,13 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       {showJingCard && (
         <div className="jing-card-overlay">
           <div className="jing-card-container">
-            <img src={gameState.selectedImages?.endcardImage || '/png/endcard/1.jpg'} alt="境哥牌" className="jing-card-large" />
+            <img 
+              src={gameState.selectedImages?.endcardImage || '/png/endcard/1.jpg'} 
+              alt="境哥牌" 
+              className="jing-card-large"
+              onClick={handleJingCardClick}
+              style={{ cursor: 'pointer' }}
+            />
             <div className="jing-card-text">
               <h3>{randomWinMessage || '恭喜你找到境哥牌！'}</h3>
               <p className="drink-punishment">{gameState.queueState?.turnPlayer?.nickname || '玩家'}罚酒{gameState.drinkCount}杯</p>
@@ -523,12 +601,18 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
             {gameState.queueState.players.slice(0, 10).map((player: Player, index: number) => (
               <div 
                 key={player.id} 
-                className={`queue-item ${player.isTurn ? 'current-turn' : ''} ${!player.isActive ? 'inactive' : ''}`}
+                className={`queue-item ${player.isTurn ? 'current-turn' : ''} ${!player.isActive ? 'inactive' : ''} ${isSelectingPlayer && player.id !== user.id ? 'selectable' : ''}`}
+                onClick={() => {
+                  if (isSelectingPlayer && player.id !== user.id && socket) {
+                    socket.emit('useItem', { playerId: user.id, targetPlayerId: player.id });
+                  }
+                }}
               >
                 <span className="queue-number">{index + 1}</span>
                 <span className="queue-nickname">{player.nickname}</span>
                 {player.isTurn && <span className="turn-indicator">当前回合</span>}
                 {!player.isActive && <span className="inactive-indicator">离线</span>}
+                {isSelectingPlayer && player.id !== user.id && <span className="select-indicator">点击选择</span>}
               </div>
             ))}
             {gameState.queueState.players.length > 10 && (
@@ -543,6 +627,30 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       <div className="mobile-admin-container">
         <button onClick={onAdminClick} className="mobile-admin-button">管理</button>
       </div>
+
+      {logoImage && (
+        <div 
+          className="logo-image-container"
+          style={{
+            position: 'fixed',
+            left: `${logoImage.x}%`,
+            top: `${logoImage.y}%`,
+            transform: 'translate(-50%, -50%)',
+            zIndex: 9999,
+            animation: 'fadeInOut 2s ease-in-out forwards'
+          }}
+        >
+          <img 
+            src={logoImage.src} 
+            alt="logo" 
+            style={{
+              objectFit: 'contain',
+              borderRadius: '8px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+            }}
+          />
+        </div>
+      )}
 
       <audio ref={audioRef} src="/sounds/tuboshu.mp3" preload="auto">
         您的浏览器不支持音频元素。

@@ -38,6 +38,7 @@ function App() {
   const [firstCardDrinkCount, setFirstCardDrinkCount] = useState(3);
   const [lastCardDrinkCount, setLastCardDrinkCount] = useState(2);
   const [turnTimeoutSeconds, setTurnTimeoutSeconds] = useState(30);
+  const [itemFlipCountThreshold, setItemFlipCountThreshold] = useState(3);
   
   // Socket连接状态
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -102,6 +103,9 @@ function App() {
           }
           if (data.turnTimeoutSeconds && typeof data.turnTimeoutSeconds === 'number') {
             setTurnTimeoutSeconds(data.turnTimeoutSeconds);
+          }
+          if (data.itemFlipCountThreshold && typeof data.itemFlipCountThreshold === 'number') {
+            setItemFlipCountThreshold(data.itemFlipCountThreshold);
           }
         })
         .catch(error => {
@@ -228,6 +232,7 @@ function App() {
           lastCardDrinkCount={lastCardDrinkCount}
           autoRestartSeconds={autoRestartSeconds}
           turnTimeoutSeconds={turnTimeoutSeconds}
+          itemFlipCountThreshold={itemFlipCountThreshold}
         />
       ) : (
         <main className="main">

@@ -864,6 +864,23 @@ button:focus-visible {
   to { opacity: 1; }
 }
 
+@keyframes fadeInOut {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+  20% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+  80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+}
+
+/* Logo图片容器 - PC端 */
+.logo-image-container {
+  pointer-events: none;
+}
+
+.logo-image-container img {
+  max-width: 120px;
+  max-height: 120px;
+}
+
 @keyframes scaleIn {
   from { transform: scale(0); }
   to { transform: scale(1); }
@@ -979,6 +996,61 @@ button:focus-visible {
   font-size: 14px;
   color: #6c757d;
   font-style: italic;
+}
+
+/* 道具按钮 */
+.item-button-container {
+  display: flex;
+  align-items: center;
+}
+
+.item-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: #ffc107;
+  color: #212529;
+  border: none;
+  border-radius: 20px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.item-button:hover {
+  background-color: #ffca28;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.item-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* 可选择的玩家项 */
+.queue-item.selectable {
+  cursor: pointer;
+  background-color: #e3f2fd;
+  border-color: #2196f3;
+}
+
+.queue-item.selectable:hover {
+  background-color: #bbdefb;
+  transform: translateY(-1px);
+}
+
+.select-indicator {
+  background-color: #2196f3;
+  color: white;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 8px;
+  letter-spacing: 0.02em;
 }
 
 /* 回合信息 */
@@ -2353,6 +2425,16 @@ input:disabled {
   background-color: #5a6268;
   transform: scale(1.05);
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Logo图片容器 - 移动端 */
+.logo-image-container {
+  pointer-events: none;
+}
+
+.logo-image-container img {
+  max-width: 80px;
+  max-height: 80px;
 }
 }
 

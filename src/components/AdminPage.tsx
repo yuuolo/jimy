@@ -9,6 +9,7 @@ interface AdminPageProps {
   lastCardDrinkCount: number;
   autoRestartSeconds: number;
   turnTimeoutSeconds: number;
+  itemFlipCountThreshold: number;
 }
 
 interface Player {
@@ -18,7 +19,7 @@ interface Player {
   isActive: boolean;
 }
 
-const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: propDrinkParameter, firstCardDrinkCount: propFirstCardDrinkCount, lastCardDrinkCount: propLastCardDrinkCount, autoRestartSeconds: propAutoRestartSeconds, turnTimeoutSeconds: propTurnTimeoutSeconds }) => {
+const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: propDrinkParameter, firstCardDrinkCount: propFirstCardDrinkCount, lastCardDrinkCount: propLastCardDrinkCount, autoRestartSeconds: propAutoRestartSeconds, turnTimeoutSeconds: propTurnTimeoutSeconds, itemFlipCountThreshold: propItemFlipCountThreshold }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -40,6 +41,7 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
   const [drinkParameter, setDrinkParameter] = useState(propDrinkParameter);
   const [firstCardDrinkCount, setFirstCardDrinkCount] = useState(propFirstCardDrinkCount);
   const [lastCardDrinkCount, setLastCardDrinkCount] = useState(propLastCardDrinkCount);
+  const [itemFlipCountThreshold, setItemFlipCountThreshold] = useState(propItemFlipCountThreshold || 3);
   
   const isInitialized = useRef(false);
 
@@ -159,6 +161,29 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
       });
     }
   }, [lastCardDrinkCount, isAuthenticated]);
+
+  // 自动保存道具翻牌数阈值
+  useEffect(() => {
+    if (isInitialized.current && isAuthenticated && itemFlipCountThreshold >= 1 && itemFlipCountThreshold <= 20) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      fetch(`${apiUrl}/api/preferences`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ itemFlipCountThreshold })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) {
+          console.error('道具翻牌数阈值更新失败:', data.message);
+        }
+      })
+      .catch(error => {
+        console.error('更新道具翻牌数阈值失败:', error);
+      });
+    }
+  }, [itemFlipCountThreshold, isAuthenticated]);
 
   // 自动保存超时时间
   useEffect(() => {
@@ -530,6 +555,19 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
                 max="100"
                 value={lastCardDrinkCount}
                 onChange={(e) => setLastCardDrinkCount(parseInt(e.target.value) || 2)}
+              />
+            </div>
+          </div>
+          <div className="drink-parameter-item">
+            <label htmlFor="item-flip-count-threshold">获得点名道具翻牌数：</label>
+            <div className="item-flip-control">
+              <input
+                type="number"
+                id="item-flip-count-threshold"
+                min="1"
+                max="20"
+                value={itemFlipCountThreshold}
+                onChange={(e) => setItemFlipCountThreshold(parseInt(e.target.value) || 3)}
               />
             </div>
           </div>

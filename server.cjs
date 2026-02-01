@@ -249,6 +249,13 @@ app.post('/api/preferences', (req, res) => {
     updated = true;
   }
   
+  // 更新道具翻牌数阈值
+  if (itemFlipCountThreshold && typeof itemFlipCountThreshold === 'number' && itemFlipCountThreshold >= 1 && itemFlipCountThreshold <= 20) {
+    userPreferences.itemFlipCountThreshold = itemFlipCountThreshold;
+    Logger.info('道具翻牌数阈值已更新', { itemFlipCountThreshold });
+    updated = true;
+  }
+  
   if (updated) {
     writeConfig(userPreferences);
     io.emit('preferencesUpdated', userPreferences);
@@ -692,65 +699,7 @@ io.on('connection', (socket) => {
           return;
         }
         
-        // 随机翻开一张牌
-        const unflippedCards = gameState.cards.filter(c => !c.isFlipped);
-        if (unflippedCards.length > 0) {
-          const randomCard = unflippedCards[Math.floor(Math.random() * unflippedCards.length)];
-          randomCard.isFlipped = true;
-          
-          // 计算酒杯数量
-          let drinkCount = gameState.drinkCount;
-          const result = playerQueue.turnFlipCount - userPreferences.drinkParameter;
-          if (result > 0) {
-            drinkCount = gameState.drinkCount + 1;
-            gameState.drinkCount = drinkCount;
-          }
-          
-          // 检查是否是境哥牌
-          if (randomCard.isJingCard) {
-            gameState.gameOver = true;
-            gameState.status = 'ended';
-            gameState.winner = playerQueue.turnPlayer;
-            
-            const allCardsUnflipped = gameState.cards.every(c => !c.isFlipped || c.id === randomCard.id);
-            if (playerQueue.turnFlipCount === 1 && allCardsUnflipped) {
-              drinkCount = userPreferences.firstCardDrinkCount;
-              gameState.drinkCount = drinkCount;
-            } else {
-              const unflippedCardsAfter = gameState.cards.filter(c => !c.isFlipped && c.id !== randomCard.id);
-              if (unflippedCardsAfter.length === 0) {
-                drinkCount = gameState.drinkCount + userPreferences.lastCardDrinkCount;
-                gameState.drinkCount = drinkCount;
-              }
-            }
-            
-            if (userPreferences.winMessages && userPreferences.winMessages.length > 0) {
-              const randomIndex = Math.floor(Math.random() * userPreferences.winMessages.length);
-              gameState.winMessage = userPreferences.winMessages[randomIndex];
-            }
-            
-            Logger.info('境哥牌被找到，游戏结束', { cardId: randomCard.id, winner: playerQueue.turnPlayer, drinkCount });
-            io.emit('jingCardFound', {
-              player: playerQueue.turnPlayer,
-              flipCount: playerQueue.turnFlipCount,
-              drinkCount: drinkCount
-            });
-            
-            gameState.queueState = playerQueue.getQueueState();
-            io.emit('gameState', gameState);
-            Logger.info('倒计时结束，随机翻开一张牌', { cardId: randomCard.id, drinkCount });
-          } else {
-            gameState.queueState = playerQueue.getQueueState();
-            io.emit('gameState', gameState);
-            Logger.info('倒计时结束，随机翻开一张牌', { cardId: randomCard.id, drinkCount });
-            
-            // 结束当前回合
-            playerQueue.nextTurn();
-          }
-        } else {
-          // 结束当前回合
-          playerQueue.nextTurn();
-        }
+
       }
     }, 1000);
     
