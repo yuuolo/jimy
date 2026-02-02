@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const fs = require('fs');
 const path = require('path');
+const multer = require('multer');
 
 // 读取并随机选择图片
 function selectRandomImages() {
@@ -139,7 +140,9 @@ let userPreferences = readConfig() || {
   defaultCardCount: 9,
   defaultColumns: 3,
   gameTitle: '壹城翻牌游戏',
-  timeoutMinutes: 3
+  timeoutMinutes: 3,
+  itemFlipCountThreshold: 3,
+  reverseItemFlipCountThreshold: 2
 };
 
 // 全局游戏状态
@@ -152,13 +155,40 @@ let gameState = {
   winner: null,
   queueState: null,
   drinkCount: 1,
-  showCountdown: false
+  showCountdown: false,
+  item: {
+    hasItem: false,
+    itemPlayerId: null,
+    itemUsed: false,
+    reverseItem: {
+      hasItem: false,
+      itemPlayerId: null,
+      itemUsed: false
+    }
+  }
 };
 
 // 中间件
 app.use(express.json());
 app.use(express.static('dist'));
 app.use(express.static('public'));
+
+// 配置multer用于文件上传
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'public/png/ini/');
+  },
+  filename: function (req, file, cb) {
+    cb(null, 'gameini.jpg');
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB限制
+  }
+});
 
 // 简单的健康检查接口
 app.get('/health', (req, res) => {
@@ -181,7 +211,9 @@ app.post('/api/preferences', (req, res) => {
     drinkParameter, 
     firstCardDrinkCount, 
     lastCardDrinkCount,
-    turnTimeoutSeconds 
+    turnTimeoutSeconds,
+    itemFlipCountThreshold,
+    reverseItemFlipCountThreshold 
   } = req.body;
   let updated = false;
   
@@ -253,6 +285,13 @@ app.post('/api/preferences', (req, res) => {
   if (itemFlipCountThreshold && typeof itemFlipCountThreshold === 'number' && itemFlipCountThreshold >= 1 && itemFlipCountThreshold <= 20) {
     userPreferences.itemFlipCountThreshold = itemFlipCountThreshold;
     Logger.info('道具翻牌数阈值已更新', { itemFlipCountThreshold });
+    updated = true;
+  }
+  
+  // 更新反转道具翻牌数阈值
+  if (reverseItemFlipCountThreshold && typeof reverseItemFlipCountThreshold === 'number' && reverseItemFlipCountThreshold >= 1 && reverseItemFlipCountThreshold <= 20) {
+    userPreferences.reverseItemFlipCountThreshold = reverseItemFlipCountThreshold;
+    Logger.info('反转道具翻牌数阈值已更新', { reverseItemFlipCountThreshold });
     updated = true;
   }
   
@@ -383,6 +422,32 @@ class PlayerQueue {
     return false;
   }
 
+  // 将玩家移到第2位置
+  movePlayerToSecondPosition(playerId) {
+    const playerIndex = this.players.findIndex(p => p.id === playerId);
+    if (playerIndex !== -1 && playerIndex > 0) {
+      const player = this.players.splice(playerIndex, 1)[0];
+      this.players.splice(1, 0, player);
+      Logger.info('玩家被移到第2位置', { playerId, nickname: player.nickname });
+      return true;
+    }
+    return false;
+  }
+
+  // 反转队列顺序（第2位到最后一位反转）
+  reverseQueueOrder() {
+    if (this.players.length > 2) {
+      const firstPlayer = this.players[0];
+      const remainingPlayers = this.players.slice(1);
+      const reversedRemaining = remainingPlayers.reverse();
+      this.players = [firstPlayer, ...reversedRemaining];
+      this.turnPlayer = this.players[0];
+      Logger.info('队列顺序已反转', { queueLength: this.players.length });
+      return true;
+    }
+    return false;
+  }
+
   // 下一回合
   nextTurn() {
     if (this.players.length > 0) {
@@ -485,6 +550,10 @@ class PlayerQueue {
         // 检查是否需要更新当前回合玩家
         if (this.turnPlayer && this.turnPlayer.id === playerId) {
           this.nextTurn();
+          // 重置反转道具状态，使下个回合可以重新获得
+          gameState.item.reverseItem.hasItem = false;
+          gameState.item.reverseItem.itemPlayerId = null;
+          gameState.item.reverseItem.itemUsed = false;
         }
       }
     }
@@ -518,6 +587,11 @@ class PlayerQueue {
         this.turnCountdown = 0;
         io.emit('turnCountdownUpdated', { countdown: 0 });
         Logger.info('取消当前回合相关属性', { playerId, nickname: player.nickname });
+        
+        // 重置反转道具状态
+        gameState.item.reverseItem.hasItem = false;
+        gameState.item.reverseItem.itemPlayerId = null;
+        gameState.item.reverseItem.itemUsed = false;
       }
       
       return true;
@@ -568,7 +642,17 @@ function initializeGame(cardCount) {
     winner: null,
     queueState: playerQueue.getQueueState(),
     drinkCount: 1,
-    selectedImages: selectedImages
+    selectedImages: selectedImages,
+    item: {
+      hasItem: false,
+      itemPlayerId: null,
+      itemUsed: false,
+      reverseItem: {
+        hasItem: false,
+        itemPlayerId: null,
+        itemUsed: false
+      }
+    }
   };
   
   Logger.info('游戏初始化成功', { gameState });
@@ -676,6 +760,40 @@ io.on('connection', (socket) => {
     // 增加翻牌计数
     const flipCount = playerQueue.incrementFlipCount();
     Logger.info('玩家翻牌', { playerId, cardId, flipCount });
+    
+    // 检查是否达到道具翻牌数阈值
+    const itemThreshold = userPreferences.itemFlipCountThreshold || 3;
+    if (flipCount === itemThreshold && !gameState.item.hasItem) {
+      gameState.item.hasItem = true;
+      gameState.item.itemPlayerId = playerId;
+      gameState.item.itemUsed = false;
+      Logger.info('玩家获得点名道具', { 
+        playerId, 
+        nickname: playerQueue.turnPlayer?.nickname, 
+        flipCount, 
+        itemThreshold,
+        queuePosition: playerQueue.players.findIndex(p => p.id === playerId) + 1,
+        queueLength: playerQueue.players.length
+      });
+      io.emit('itemAwarded', { playerId, nickname: playerQueue.turnPlayer?.nickname });
+    }
+    
+    // 检查是否达到反转道具翻牌数阈值
+    const reverseItemThreshold = userPreferences.reverseItemFlipCountThreshold || 2;
+    if (flipCount === reverseItemThreshold && !gameState.item.reverseItem.hasItem) {
+      gameState.item.reverseItem.hasItem = true;
+      gameState.item.reverseItem.itemPlayerId = playerId;
+      gameState.item.reverseItem.itemUsed = false;
+      Logger.info('玩家获得反转道具', { 
+        playerId, 
+        nickname: playerQueue.turnPlayer?.nickname, 
+        flipCount, 
+        reverseItemThreshold,
+        queuePosition: playerQueue.players.findIndex(p => p.id === playerId) + 1,
+        queueLength: playerQueue.players.length
+      });
+      io.emit('reverseItemAwarded', { playerId, nickname: playerQueue.turnPlayer?.nickname });
+    }
     
     // 重置倒计时
     if (playerQueue.turnTimer) {
@@ -785,6 +903,11 @@ io.on('connection', (socket) => {
     // 结束回合，移到队尾
     playerQueue.nextTurn();
     
+    // 重置反转道具状态，使下个回合可以重新获得
+    gameState.item.reverseItem.hasItem = false;
+    gameState.item.reverseItem.itemPlayerId = null;
+    gameState.item.reverseItem.itemUsed = false;
+    
     // 更新游戏状态
     gameState.queueState = playerQueue.getQueueState();
     
@@ -799,6 +922,122 @@ io.on('connection', (socket) => {
     });
     
     Logger.info('回合结束', { playerId, flipCount, nextTurnPlayer: playerQueue.turnPlayer });
+  });
+
+  // 使用点名道具
+  socket.on('useItem', (data) => {
+    const { playerId, targetPlayerId } = data;
+    Logger.info('收到使用道具请求', { socketId: socket.id, playerId, targetPlayerId });
+    
+    // 检查是否有道具
+    if (!gameState.item.hasItem) {
+      Logger.warn('没有可用的道具', { playerId });
+      socket.emit('error', { message: '没有可用的道具' });
+      return;
+    }
+    
+    // 检查是否是道具拥有者
+    if (gameState.item.itemPlayerId !== playerId) {
+      Logger.warn('不是道具拥有者', { playerId, itemPlayerId: gameState.item.itemPlayerId });
+      socket.emit('error', { message: '你不是道具拥有者' });
+      return;
+    }
+    
+    // 检查道具是否已使用
+    if (gameState.item.itemUsed) {
+      Logger.warn('道具已使用', { playerId });
+      socket.emit('error', { message: '道具已使用' });
+      return;
+    }
+    
+    // 检查是否选择了自己
+    if (targetPlayerId === playerId) {
+      Logger.warn('不能选择自己', { playerId, targetPlayerId });
+      socket.emit('error', { message: '不能选择自己' });
+      return;
+    }
+    
+    // 将目标玩家移到第2位置
+    const success = playerQueue.movePlayerToSecondPosition(targetPlayerId);
+    if (success) {
+      // 标记道具已使用
+      gameState.item.itemUsed = true;
+      
+      // 更新游戏状态
+      gameState.queueState = playerQueue.getQueueState();
+      
+      // 广播游戏状态给所有玩家
+      io.emit('gameState', gameState);
+      
+      // 广播道具使用信息
+      io.emit('itemUsed', { playerId, targetPlayerId });
+      
+      Logger.info('点名道具使用成功', { playerId, targetPlayerId });
+    } else {
+      Logger.warn('移动玩家到第2位置失败', { playerId, targetPlayerId });
+      socket.emit('error', { message: '移动玩家到第2位置失败' });
+    }
+  });
+
+  // 使用反转道具
+  socket.on('useReverseItem', (data) => {
+    const { playerId } = data;
+    Logger.info('收到使用反转道具请求', { socketId: socket.id, playerId });
+    
+    // 检查是否有反转道具
+    if (!gameState.item.reverseItem.hasItem) {
+      Logger.warn('没有可用的反转道具', { playerId });
+      socket.emit('error', { message: '没有可用的反转道具' });
+      return;
+    }
+    
+    // 检查是否是道具拥有者
+    if (gameState.item.reverseItem.itemPlayerId !== playerId) {
+      Logger.warn('不是反转道具拥有者', { playerId, itemPlayerId: gameState.item.reverseItem.itemPlayerId });
+      socket.emit('error', { message: '你不是反转道具拥有者' });
+      return;
+    }
+    
+    // 检查道具是否已使用
+    if (gameState.item.reverseItem.itemUsed) {
+      Logger.warn('反转道具已使用', { playerId });
+      socket.emit('error', { message: '反转道具已使用' });
+      return;
+    }
+    
+    // 反转队列顺序
+    const success = playerQueue.reverseQueueOrder();
+    if (success) {
+      // 标记道具已使用
+      gameState.item.reverseItem.itemUsed = true;
+      
+      // 更新游戏状态
+      gameState.queueState = playerQueue.getQueueState();
+      
+      // 广播游戏状态给所有玩家
+      io.emit('gameState', gameState);
+      
+      // 广播反转道具使用信息
+      io.emit('reverseItemUsed', { playerId });
+      
+      Logger.info('反转道具使用成功', { playerId });
+    } else {
+      Logger.warn('反转队列顺序失败', { playerId });
+      socket.emit('error', { message: '反转队列顺序失败' });
+    }
+  });
+
+  // 境哥牌点击事件
+  socket.on('jingCardClick', (data) => {
+    const { src, relativeX, relativeY } = data;
+    Logger.info('收到境哥牌点击事件', { socketId: socket.id, src, relativeX, relativeY });
+    
+    // 广播给所有玩家
+    io.emit('jingCardClick', {
+      src,
+      relativeX,
+      relativeY
+    });
   });
 
   // 重新开始游戏
@@ -980,6 +1219,11 @@ io.on('connection', (socket) => {
         // 结束回合，移到队尾
         playerQueue.nextTurn();
         
+        // 重置反转道具状态，使下个回合可以重新获得
+        gameState.item.reverseItem.hasItem = false;
+        gameState.item.reverseItem.itemPlayerId = null;
+        gameState.item.reverseItem.itemUsed = false;
+        
         // 更新游戏状态
         gameState.queueState = playerQueue.getQueueState();
         
@@ -1040,6 +1284,36 @@ app.get('/api/images', (req, res) => {
   } catch (error) {
     Logger.error('获取图片列表失败', { error: error.message });
     res.status(500).json({ error: '获取图片列表失败' });
+  }
+});
+
+// 上传游戏说明图片
+app.post('/api/upload-gameini', upload.single('gameini'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: '没有上传文件' });
+    }
+    
+    Logger.info('游戏说明图片上传成功', { 
+      filename: req.file.filename,
+      size: req.file.size,
+      mimetype: req.file.mimetype 
+    });
+    
+    // 广播通知所有客户端游戏说明图片已更新
+    io.emit('gameIniUpdated', {
+      filename: req.file.filename,
+      timestamp: new Date().getTime()
+    });
+    
+    res.json({ 
+      success: true, 
+      message: '游戏说明图片上传成功',
+      filename: req.file.filename
+    });
+  } catch (error) {
+    Logger.error('游戏说明图片上传失败', { error: error.message });
+    res.status(500).json({ success: false, message: '上传失败' });
   }
 });
 

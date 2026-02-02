@@ -10,6 +10,7 @@ interface AdminPageProps {
   autoRestartSeconds: number;
   turnTimeoutSeconds: number;
   itemFlipCountThreshold: number;
+  reverseItemFlipCountThreshold: number;
 }
 
 interface Player {
@@ -19,7 +20,7 @@ interface Player {
   isActive: boolean;
 }
 
-const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: propDrinkParameter, firstCardDrinkCount: propFirstCardDrinkCount, lastCardDrinkCount: propLastCardDrinkCount, autoRestartSeconds: propAutoRestartSeconds, turnTimeoutSeconds: propTurnTimeoutSeconds, itemFlipCountThreshold: propItemFlipCountThreshold }) => {
+const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: propDrinkParameter, firstCardDrinkCount: propFirstCardDrinkCount, lastCardDrinkCount: propLastCardDrinkCount, autoRestartSeconds: propAutoRestartSeconds, turnTimeoutSeconds: propTurnTimeoutSeconds, itemFlipCountThreshold: propItemFlipCountThreshold, reverseItemFlipCountThreshold: propReverseItemFlipCountThreshold }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -42,6 +43,10 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
   const [firstCardDrinkCount, setFirstCardDrinkCount] = useState(propFirstCardDrinkCount);
   const [lastCardDrinkCount, setLastCardDrinkCount] = useState(propLastCardDrinkCount);
   const [itemFlipCountThreshold, setItemFlipCountThreshold] = useState(propItemFlipCountThreshold || 3);
+  const [reverseItemFlipCountThreshold, setReverseItemFlipCountThreshold] = useState(propReverseItemFlipCountThreshold || 2);
+  const [gameIniFile, setGameIniFile] = useState<File | null>(null);
+  const [uploadingGameIni, setUploadingGameIni] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState('');
   
   const isInitialized = useRef(false);
 
@@ -184,6 +189,29 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
       });
     }
   }, [itemFlipCountThreshold, isAuthenticated]);
+
+  // 自动保存反转道具翻牌数阈值
+  useEffect(() => {
+    if (isInitialized.current && isAuthenticated && reverseItemFlipCountThreshold >= 1 && reverseItemFlipCountThreshold <= 20) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      fetch(`${apiUrl}/api/preferences`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ reverseItemFlipCountThreshold })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) {
+          console.error('反转道具翻牌数阈值更新失败:', data.message);
+        }
+      })
+      .catch(error => {
+        console.error('更新反转道具翻牌数阈值失败:', error);
+      });
+    }
+  }, [reverseItemFlipCountThreshold, isAuthenticated]);
 
   // 自动保存超时时间
   useEffect(() => {
@@ -426,6 +454,61 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
     setWinMessages(winMessages.filter((_, i) => i !== index));
   };
 
+  // 处理游戏说明图片上传
+  const handleGameIniUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setUploadMessage('请上传图片文件');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadMessage('图片大小不能超过5MB');
+      return;
+    }
+
+    setGameIniFile(file);
+    setUploadMessage('');
+  };
+
+  // 提交游戏说明图片上传
+  const handleSubmitGameIniUpload = async () => {
+    if (!gameIniFile) {
+      setUploadMessage('请选择要上传的图片');
+      return;
+    }
+
+    setUploadingGameIni(true);
+    setUploadMessage('');
+
+    const formData = new FormData();
+    formData.append('gameini', gameIniFile);
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      const response = await fetch(`${apiUrl}/api/upload-gameini`, {
+        method: 'POST',
+        body: formData
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setUploadMessage('游戏说明图片上传成功！');
+        setGameIniFile(null);
+      } else {
+        setUploadMessage(data.message || '上传失败');
+      }
+    } catch (error) {
+      console.error('上传游戏说明图片失败:', error);
+      setUploadMessage('上传失败，请重试');
+    } finally {
+      setUploadingGameIni(false);
+    }
+  };
+
   // 未认证时显示登录界面
   if (!isAuthenticated) {
     return (
@@ -571,6 +654,49 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
               />
             </div>
           </div>
+          <div className="drink-parameter-item">
+            <label htmlFor="reverse-item-flip-count-threshold">获得反转道具翻牌数：</label>
+            <div className="item-flip-control">
+              <input
+                type="number"
+                id="reverse-item-flip-count-threshold"
+                min="1"
+                max="20"
+                value={reverseItemFlipCountThreshold}
+                onChange={(e) => setReverseItemFlipCountThreshold(parseInt(e.target.value) || 2)}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-section">
+        <h3>游戏说明</h3>
+        <div className="game-ini-upload">
+          <div className="upload-input-wrapper">
+            <input
+              type="file"
+              id="game-ini-file"
+              accept="image/*"
+              onChange={handleGameIniUpload}
+              style={{ display: 'none' }}
+            />
+            <label htmlFor="game-ini-file" className="upload-button">
+              {gameIniFile ? gameIniFile.name : '选择图片'}
+            </label>
+          </div>
+          <button 
+            onClick={handleSubmitGameIniUpload}
+            disabled={uploadingGameIni || !gameIniFile}
+            className="upload-submit-button"
+          >
+            {uploadingGameIni ? '上传中...' : '上传'}
+          </button>
+          {uploadMessage && (
+            <div className={`upload-message ${uploadMessage.includes('成功') ? 'success' : 'error'}`}>
+              {uploadMessage}
+            </div>
+          )}
         </div>
       </div>
 

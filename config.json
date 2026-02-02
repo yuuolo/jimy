@@ -1,6 +1,6 @@
 {
   "defaultCardCount": 9,
-  "gameTitle": "好嗨靓仔！",
+  "gameTitle": "好嗨靓仔!靓女!",
   "timeoutMinutes": 15,
   "defaultColumns": 3,
   "winMessages": [
@@ -14,5 +14,7 @@
   "drinkParameter": 2,
   "firstCardDrinkCount": 3,
   "lastCardDrinkCount": 2,
-  "turnTimeoutSeconds": 10
+  "turnTimeoutSeconds": 10,
+  "itemFlipCountThreshold": 5,
+  "reverseItemFlipCountThreshold": 2
 }

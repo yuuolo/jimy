@@ -39,6 +39,7 @@ function App() {
   const [lastCardDrinkCount, setLastCardDrinkCount] = useState(2);
   const [turnTimeoutSeconds, setTurnTimeoutSeconds] = useState(30);
   const [itemFlipCountThreshold, setItemFlipCountThreshold] = useState(3);
+  const [reverseItemFlipCountThreshold, setReverseItemFlipCountThreshold] = useState(2);
   
   // Socket连接状态
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -174,6 +175,15 @@ function App() {
         if (preferences.lastCardDrinkCount && typeof preferences.lastCardDrinkCount === 'number') {
           setLastCardDrinkCount(preferences.lastCardDrinkCount);
         }
+        if (preferences.turnTimeoutSeconds && typeof preferences.turnTimeoutSeconds === 'number') {
+          setTurnTimeoutSeconds(preferences.turnTimeoutSeconds);
+        }
+        if (preferences.itemFlipCountThreshold && typeof preferences.itemFlipCountThreshold === 'number') {
+          setItemFlipCountThreshold(preferences.itemFlipCountThreshold);
+        }
+        if (preferences.reverseItemFlipCountThreshold && typeof preferences.reverseItemFlipCountThreshold === 'number') {
+          setReverseItemFlipCountThreshold(preferences.reverseItemFlipCountThreshold);
+        }
       });
 
       // 处理错误消息
@@ -233,6 +243,7 @@ function App() {
           autoRestartSeconds={autoRestartSeconds}
           turnTimeoutSeconds={turnTimeoutSeconds}
           itemFlipCountThreshold={itemFlipCountThreshold}
+          reverseItemFlipCountThreshold={reverseItemFlipCountThreshold}
         />
       ) : (
         <main className="main">

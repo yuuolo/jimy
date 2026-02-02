@@ -23,6 +23,11 @@ interface GameState {
     hasItem: boolean;
     itemPlayerId: string | null;
     itemUsed: boolean;
+    reverseItem: {
+      hasItem: boolean;
+      itemPlayerId: string | null;
+      itemUsed: boolean;
+    };
   };
 }
 
@@ -85,6 +90,8 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
   const [turnCountdown, setTurnCountdown] = useState(0);
   const [logoImage, setLogoImage] = useState<{ src: string; x: number; y: number } | null>(null);
   const [isSelectingPlayer, setIsSelectingPlayer] = useState(false);
+  const [showGameIni, setShowGameIni] = useState(false);
+  const [gameIniTimestamp, setGameIniTimestamp] = useState<number>(Date.now());
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const flipAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -356,6 +363,14 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       setIsSelectingPlayer(false);
     };
 
+    const handleReverseItemAwarded = (data: any) => {
+      console.log('获得反转道具:', data);
+    };
+
+    const handleReverseItemUsed = (data: any) => {
+      console.log('反转道具已使用:', data);
+    };
+
     socket.on('jingCardFound', handleJingCardFound);
     socket.on('turnEnded', handleTurnEnded);
     socket.on('turnCountdownUpdated', handleTurnCountdownUpdated);
@@ -364,6 +379,11 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
     socket.on('jingCardAudio', handleJingCardAudio);
     socket.on('itemObtained', handleItemObtained);
     socket.on('itemUsed', handleItemUsed);
+    socket.on('reverseItemAwarded', handleReverseItemAwarded);
+    socket.on('reverseItemUsed', handleReverseItemUsed);
+    socket.on('gameIniUpdated', () => {
+      setGameIniTimestamp(Date.now());
+    });
 
     return () => {
       socket.off('jingCardFound', handleJingCardFound);
@@ -374,6 +394,9 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       socket.off('jingCardAudio', handleJingCardAudio);
       socket.off('itemObtained', handleItemObtained);
       socket.off('itemUsed', handleItemUsed);
+      socket.off('reverseItemAwarded', handleReverseItemAwarded);
+      socket.off('reverseItemUsed', handleReverseItemUsed);
+      socket.off('gameIniUpdated');
     };
   }, [socket, user.id, playAudio, jingAudioRef]);
 
@@ -382,7 +405,8 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
     if (!isMobile) return;
 
     const adminContainer = document.querySelector('.mobile-admin-container');
-    if (!adminContainer) return;
+    const infoContainer = document.querySelector('.mobile-info-container');
+    if (!adminContainer || !infoContainer) return;
 
     let hideTimer: NodeJS.Timeout | null = null;
 
@@ -393,6 +417,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
 
       if (scrollTop + clientHeight >= scrollHeight - 50) {
         adminContainer.classList.add('show');
+        infoContainer.classList.add('show');
 
         if (hideTimer) {
           clearTimeout(hideTimer);
@@ -400,6 +425,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
 
         hideTimer = setTimeout(() => {
           adminContainer.classList.remove('show');
+          infoContainer.classList.remove('show');
         }, 1000);
       }
     };
@@ -481,19 +507,6 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
                   <span className="countdown-text">{turnCountdown}s</span>
                 )}
               </div>
-              {gameState.item?.hasItem && gameState.item.itemPlayerId === user.id && !gameState.item.itemUsed && (
-                <div className="item-button-container">
-                  <button 
-                    className="item-button"
-                    onClick={() => setIsSelectingPlayer(true)}
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="currentColor" />
-                    </svg>
-                    点名
-                  </button>
-                </div>
-              )}
             </div>
           )}
           
@@ -514,7 +527,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
             <div className="turn-controls">
               {!isMyTurn && (
                 <div className="current-player">
-                  当前: {gameState.queueState.turnPlayer.nickname}
+                  {gameState.queueState.turnPlayer.nickname} 的回合
                 </div>
               )}
               {isMyTurn && (
@@ -596,7 +609,37 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
 
       {gameState.queueState && (
         <div className="player-queue">
-          <h3>游戏队列</h3>
+          <div className="queue-header">
+            <h3>游戏队列</h3>
+            <div className="queue-buttons">
+              {gameState.item?.hasItem && gameState.item.itemPlayerId === user.id && !gameState.item.itemUsed && (
+                <button 
+                  className="item-button"
+                  onClick={() => setIsSelectingPlayer(true)}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="currentColor" />
+                  </svg>
+                  点名
+                </button>
+              )}
+              {gameState.item?.reverseItem?.hasItem && gameState.item.reverseItem.itemPlayerId === user.id && !gameState.item.reverseItem.itemUsed && (
+                <button 
+                  className="item-button"
+                  onClick={() => {
+                    if (socket) {
+                      socket.emit('useReverseItem', { playerId: user.id });
+                    }
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M16 17.01V10h-2v7.01h-3L15 21l4-3.99h-3zM9 3L5 6.99h3V14h2V6.99h3L9 3z" fill="currentColor" />
+                  </svg>
+                  反转
+                </button>
+              )}
+            </div>
+          </div>
           <div className="queue-list">
             {gameState.queueState.players.slice(0, 10).map((player: Player, index: number) => (
               <div 
@@ -627,6 +670,45 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       <div className="mobile-admin-container">
         <button onClick={onAdminClick} className="mobile-admin-button">管理</button>
       </div>
+
+      <div className="mobile-info-container">
+        <button 
+          className="mobile-info-button"
+          onClick={() => setShowGameIni(true)}
+        >说明</button>
+      </div>
+
+      {showGameIni && (
+        <div 
+          className="game-ini-container"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 99999
+          }}
+        >
+          <img 
+            src={`/png/ini/gameini.jpg?timestamp=${gameIniTimestamp}`} 
+            alt="游戏说明" 
+            style={{
+              maxWidth: '90%',
+              maxHeight: '90%',
+              objectFit: 'contain',
+              borderRadius: '16px',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+              cursor: 'pointer'
+            }}
+            onClick={() => setShowGameIni(false)}
+          />
+        </div>
+      )}
 
       {logoImage && (
         <div 
