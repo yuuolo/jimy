@@ -1,20 +1,25 @@
 {
   "defaultCardCount": 9,
-  "gameTitle": "好嗨靓仔!靓女!",
+  "gameTitle": "壹城翻牌游戏",
   "timeoutMinutes": 15,
   "defaultColumns": 3,
   "winMessages": [
     "恭喜你找到境哥牌！",
+    "太棒了，你找到了！",
     "运气真好，境哥牌被你找到了！",
     "恭喜恭喜，你找到了境哥牌！",
-    "厉害了，境哥牌归你了！",
-    "D女都系大家既！"
+    "厉害了，境哥牌归你了！"
   ],
-  "autoRestartSeconds": 30,
+  "autoRestartSeconds": 15,
   "drinkParameter": 2,
   "firstCardDrinkCount": 3,
   "lastCardDrinkCount": 2,
   "turnTimeoutSeconds": 10,
   "itemFlipCountThreshold": 5,
-  "reverseItemFlipCountThreshold": 2
+  "reverseItemFlipCountThreshold": 2,
+  "backcardSelectionMode": "random",
+  "backcardSelectionCount": 9,
+  "selectedBackcards": [
+    "1770012539095-970628317.jpeg"
+  ]
 }

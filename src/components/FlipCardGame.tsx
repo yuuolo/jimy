@@ -17,6 +17,12 @@ interface GameState {
   selectedImages?: {
     backcardImages: string[];
     endcardImage: string;
+    endcardInfo?: {
+      filename: string;
+      path: string;
+      size?: number;
+      lastModified?: string;
+    };
   };
   showCountdown?: boolean;
   item?: {
@@ -98,6 +104,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
   const jingAudioRef = useRef<HTMLAudioElement | null>(null);
   const restartAudioRef = useRef<HTMLAudioElement | null>(null);
   const heartbeatAudioRef = useRef<HTMLAudioElement | null>(null);
+  const paidaAudioRef = useRef<HTMLAudioElement | null>(null);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const getDrinkArtText = useCallback((drinkCount: number | undefined): string => {
@@ -132,6 +139,49 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
     }
   }, []);
 
+  // 文字转语音函数
+  const speakText = useCallback((text: string) => {
+    if ('speechSynthesis' in window) {
+      const speech = new SpeechSynthesisUtterance(text);
+      speech.lang = 'zh-CN';
+      speech.rate = 1;
+      speech.pitch = 1;
+      speech.volume = 1;
+      speechSynthesis.speak(speech);
+    }
+  }, []);
+
+  // 背景牌预加载
+  useEffect(() => {
+    const preloadImages = () => {
+      const images = gameState.selectedImages?.backcardImages || [];
+      const defaultImage = '/png/backcard/2.jpg';
+      const imagesToPreload = images.length > 0 ? images : [defaultImage];
+      
+      // 预加载背景牌图片
+      imagesToPreload.forEach((src) => {
+        const img = new Image();
+        img.src = src;
+        img.onerror = () => {
+          console.warn('背景牌图片加载失败:', src);
+        };
+      });
+      
+      // 预加载境哥牌图片
+      const endcardImage = gameState.selectedImages?.endcardImage;
+      if (endcardImage) {
+        const endcardImg = new Image();
+        endcardImg.src = endcardImage;
+        endcardImg.onerror = () => {
+          console.warn('境哥牌图片加载失败:', endcardImage);
+          // 可以在这里设置默认图片作为回退
+        };
+      }
+    };
+
+    preloadImages();
+  }, [gameState.selectedImages?.backcardImages, gameState.selectedImages?.endcardImage]);
+
   const getOptimalColumns = useCallback((): number => {
     const count = gameState.cards?.length || 0;
     if (count === 0) return columns;
@@ -165,12 +215,15 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
     const relativeX = (e.clientX / window.innerWidth) * 100;
     const relativeY = (e.clientY / window.innerHeight) * 100;
     
+    // 播放拍打卡片音效
+    playAudio(paidaAudioRef);
+    
     socket.emit('jingCardClick', {
       src: randomLogo,
       relativeX,
       relativeY
     });
-  }, [socket]);
+  }, [socket, playAudio]);
 
   const handleFlipCard = useCallback((cardId: number) => {
     if (gameState.gameOver) return;
@@ -228,7 +281,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       socket.emit('exitQueue', user.id);
       console.log('已发送退出队列请求');
     }
-  }, [socket, user.id, playAudio, jingAudioRef]);
+  }, [socket, user.id, playAudio, jingAudioRef, speakText]);
 
   const handleJoinQueue = useCallback(() => {
     if (socket && user.id) {
@@ -356,6 +409,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
 
     const handleItemObtained = (data: any) => {
       console.log('获得道具:', data);
+      speakText('恭喜获得道具！');
     };
 
     const handleItemUsed = (data: any) => {
@@ -365,6 +419,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
 
     const handleReverseItemAwarded = (data: any) => {
       console.log('获得反转道具:', data);
+      speakText('恭喜获得反转道具！');
     };
 
     const handleReverseItemUsed = (data: any) => {
@@ -398,7 +453,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       socket.off('reverseItemUsed', handleReverseItemUsed);
       socket.off('gameIniUpdated');
     };
-  }, [socket, user.id, playAudio, jingAudioRef]);
+  }, [socket, user.id, playAudio, jingAudioRef, speakText]);
 
   useEffect(() => {
     const isMobile = window.innerWidth < 768;
@@ -464,6 +519,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
               ) : (
                 <div className="nickname-display">
                   <span className="nickname" onClick={onStartEditNickname}>{user?.nickname || '玩家'}</span>
+                  <button onClick={() => setShowGameIni(true)} className="info-button">说明</button>
                   <button onClick={onAdminClick} className="admin-button">管理</button>
                   {isUserInQueue ? (
                     <button onClick={handleExitQueue} className="exit-queue-button">退出队列</button>
@@ -568,7 +624,15 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
                 {!card.isFlipped && (
                   <div className="card-back">
                     {card.isJingCard ? (
-                      <img src={gameState.selectedImages?.endcardImage || '/png/endcard/1.jpg'} alt="境哥牌" />
+                      <img 
+                        src={gameState.selectedImages?.endcardImage || '/png/endcard/1.jpg'} 
+                        alt="境哥牌" 
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = '/png/endcard/1.jpg'; // 加载失败时使用默认图片
+                          console.warn('境哥牌图片加载失败，使用默认图片');
+                        }}
+                      />
                     ) : (
                       <div className="empty-card"></div>
                     )}
@@ -589,6 +653,11 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
               className="jing-card-large"
               onClick={handleJingCardClick}
               style={{ cursor: 'pointer' }}
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.src = '/png/endcard/1.jpg'; // 加载失败时使用默认图片
+                console.warn('境哥牌图片加载失败，使用默认图片');
+              }}
             />
             <div className="jing-card-text">
               <h3>{randomWinMessage || '恭喜你找到境哥牌！'}</h3>
@@ -625,12 +694,13 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
               )}
               {gameState.item?.reverseItem?.hasItem && gameState.item.reverseItem.itemPlayerId === user.id && !gameState.item.reverseItem.itemUsed && (
                 <button 
-                  className="item-button"
+                  className={`item-button ${(gameState.queueState?.players?.length || 0) < 2 ? 'item-button-disabled' : ''}`}
                   onClick={() => {
-                    if (socket) {
+                    if (socket && (gameState.queueState?.players?.length || 0) >= 2) {
                       socket.emit('useReverseItem', { playerId: user.id });
                     }
                   }}
+                  disabled={(gameState.queueState?.players?.length || 0) < 2}
                 >
                   <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M16 17.01V10h-2v7.01h-3L15 21l4-3.99h-3zM9 3L5 6.99h3V14h2V6.99h3L9 3z" fill="currentColor" />
@@ -752,7 +822,10 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       
       <audio ref={heartbeatAudioRef} src="/sounds/heartbeat.mp3" preload="auto" loop>
         您的浏览器不支持音频元素。
-      </audio>
+       </audio>
+      <audio ref={paidaAudioRef} src="/sounds/paida.mp3" preload="auto">
+        您的浏览器不支持音频元素。
+       </audio>
     </div>
   );
 };

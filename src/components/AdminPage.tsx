@@ -47,8 +47,50 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
   const [gameIniFile, setGameIniFile] = useState<File | null>(null);
   const [uploadingGameIni, setUploadingGameIni] = useState(false);
   const [uploadMessage, setUploadMessage] = useState('');
+  const [backcards, setBackcards] = useState<any[]>([]);
+  const [backcardFiles, setBackcardFiles] = useState<File[]>([]);
+  const [uploadingBackcard, setUploadingBackcard] = useState(false);
+  const [backcardMessage, setBackcardMessage] = useState('');
+  const [backcardSelectionMode, setBackcardSelectionMode] = useState('random');
+  const [backcardSelectionCount, setBackcardSelectionCount] = useState(3);
+  const [selectedBackcards, setSelectedBackcards] = useState<string[]>([]);
+  
+  // 境哥牌管理
+  const [endcards, setEndcards] = useState<any[]>([]);
+  const [endcardFiles, setEndcardFiles] = useState<File[]>([]);
+  const [uploadingEndcard, setUploadingEndcard] = useState(false);
+  const [endcardMessage, setEndcardMessage] = useState('');
   
   const isInitialized = useRef(false);
+
+  // 加载保存的偏好设置
+  useEffect(() => {
+    const loadPreferences = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+        const response = await fetch(`${apiUrl}/api/preferences`);
+        const data = await response.json();
+        
+        // 加载背景牌选择模式设置
+        if (data.backcardSelectionMode) {
+          setBackcardSelectionMode(data.backcardSelectionMode);
+        }
+        if (data.backcardSelectionCount) {
+          setBackcardSelectionCount(data.backcardSelectionCount);
+        }
+        if (data.selectedBackcards) {
+          setSelectedBackcards(data.selectedBackcards);
+        }
+        
+        isInitialized.current = true;
+      } catch (error) {
+        console.error('加载偏好设置失败:', error);
+        isInitialized.current = true;
+      }
+    };
+    
+    loadPreferences();
+  }, []);
 
   // 监听 propAutoRestartSeconds 的变化
   useEffect(() => {
@@ -212,6 +254,113 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
       });
     }
   }, [reverseItemFlipCountThreshold, isAuthenticated]);
+
+  // 自动保存背景牌选择模式
+  useEffect(() => {
+    if (isInitialized.current && isAuthenticated) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      fetch(`${apiUrl}/api/preferences`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ backcardSelectionMode })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) {
+          console.error('背景牌选择模式更新失败:', data.message);
+        }
+      })
+      .catch(error => {
+        console.error('更新背景牌选择模式失败:', error);
+      });
+    }
+  }, [backcardSelectionMode, isAuthenticated]);
+
+  // 自动保存背景牌选择数量
+  useEffect(() => {
+    if (isInitialized.current && isAuthenticated && backcardSelectionCount >= 1 && backcardSelectionCount <= 50) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      fetch(`${apiUrl}/api/preferences`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ backcardSelectionCount })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) {
+          console.error('背景牌选择数量更新失败:', data.message);
+        }
+      })
+      .catch(error => {
+        console.error('更新背景牌选择数量失败:', error);
+      });
+    }
+  }, [backcardSelectionCount, isAuthenticated]);
+
+  // 自动保存固定背景牌列表
+  useEffect(() => {
+    if (isInitialized.current && isAuthenticated) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      fetch(`${apiUrl}/api/preferences`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ selectedBackcards })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) {
+          console.error('固定背景牌列表更新失败:', data.message);
+        }
+      })
+      .catch(error => {
+        console.error('更新固定背景牌列表失败:', error);
+      });
+    }
+  }, [selectedBackcards, isAuthenticated]);
+
+  // 获取背景牌列表
+  useEffect(() => {
+    const fetchBackcards = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+        const response = await fetch(`${apiUrl}/api/backcards`);
+        const data = await response.json();
+        if (data.success) {
+          setBackcards(data.backcards);
+        }
+      } catch (error) {
+        console.error('获取背景牌列表失败:', error);
+      }
+    };
+
+    fetchBackcards();
+  }, []);
+
+  // 获取境哥牌列表
+  useEffect(() => {
+    const fetchEndcards = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+        const response = await fetch(`${apiUrl}/api/endcards`);
+        const data = await response.json();
+        if (data.success) {
+          setEndcards(data.endcards);
+        }
+      } catch (error) {
+        console.error('获取境哥牌列表失败:', error);
+      }
+    };
+
+    fetchEndcards();
+  }, []);
+
+  // 处理背景牌上传
 
   // 自动保存超时时间
   useEffect(() => {
@@ -509,6 +658,208 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
     }
   };
 
+  // 处理背景牌上传
+  const handleBackcardUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const validFiles: File[] = [];
+    let errorMessage = '';
+
+    for (const file of Array.from(files)) {
+      if (!file.type.startsWith('image/')) {
+        errorMessage = '请上传图片文件';
+        break;
+      }
+
+      if (file.size > 5 * 1024 * 1024) {
+        errorMessage = '图片大小不能超过5MB';
+        break;
+      }
+
+      validFiles.push(file);
+    }
+
+    if (errorMessage) {
+      setBackcardMessage(errorMessage);
+      setBackcardFiles([]);
+      return;
+    }
+
+    setBackcardFiles(validFiles);
+    setBackcardMessage(`已选择 ${validFiles.length} 个文件`);
+  };
+
+  // 提交背景牌上传
+  const handleSubmitBackcardUpload = async () => {
+    if (backcardFiles.length === 0) {
+      setBackcardMessage('请选择要上传的图片');
+      return;
+    }
+
+    setUploadingBackcard(true);
+    setBackcardMessage('');
+
+    const formData = new FormData();
+    backcardFiles.forEach((file) => {
+      formData.append('backcards', file);
+    });
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      const response = await fetch(`${apiUrl}/api/upload-backcard`, {
+        method: 'POST',
+        body: formData
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setBackcardMessage(`背景牌上传成功！共上传 ${data.uploadedFiles || 1} 个文件`);
+        setBackcardFiles([]);
+        // 重新获取背景牌列表
+        const listResponse = await fetch(`${apiUrl}/api/backcards`);
+        const listData = await listResponse.json();
+        if (listData.success) {
+          setBackcards(listData.backcards);
+        }
+      } else {
+        setBackcardMessage(data.message || '上传失败');
+      }
+    } catch (error) {
+      console.error('上传背景牌失败:', error);
+      setBackcardMessage('上传失败，请重试');
+    } finally {
+      setUploadingBackcard(false);
+    }
+  };
+
+  // 删除背景牌
+  const handleDeleteBackcard = async (filename: string) => {
+    if (!confirm('确定要删除这张背景牌吗？')) {
+      return;
+    }
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      const response = await fetch(`${apiUrl}/api/backcards/${filename}`, {
+        method: 'DELETE'
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setBackcards(backcards.filter(b => b.filename !== filename));
+      } else {
+        alert(data.message || '删除失败');
+      }
+    } catch (error) {
+      console.error('删除背景牌失败:', error);
+      alert('删除失败，请重试');
+    }
+  };
+
+  // 处理境哥牌上传
+  const handleEndcardUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const validFiles: File[] = [];
+    let errorMessage = '';
+
+    for (const file of Array.from(files)) {
+      if (!file.type.startsWith('image/')) {
+        errorMessage = '请上传图片文件';
+        break;
+      }
+
+      if (file.size > 5 * 1024 * 1024) {
+        errorMessage = '图片大小不能超过5MB';
+        break;
+      }
+
+      validFiles.push(file);
+    }
+
+    if (errorMessage) {
+      setEndcardMessage(errorMessage);
+      setEndcardFiles([]);
+      return;
+    }
+
+    setEndcardFiles(validFiles);
+    setEndcardMessage(`已选择 ${validFiles.length} 个文件`);
+  };
+
+  // 提交境哥牌上传
+  const handleSubmitEndcardUpload = async () => {
+    if (endcardFiles.length === 0) {
+      setEndcardMessage('请选择要上传的图片');
+      return;
+    }
+
+    setUploadingEndcard(true);
+    setEndcardMessage('');
+
+    const formData = new FormData();
+    endcardFiles.forEach((file) => {
+      formData.append('endcards', file);
+    });
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      const response = await fetch(`${apiUrl}/api/upload-endcard`, {
+        method: 'POST',
+        body: formData
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setEndcardMessage(`境哥牌上传成功！共上传 ${data.uploadedFiles || 1} 个文件`);
+        setEndcardFiles([]);
+        // 重新获取境哥牌列表
+        const listResponse = await fetch(`${apiUrl}/api/endcards`);
+        const listData = await listResponse.json();
+        if (listData.success) {
+          setEndcards(listData.endcards);
+        }
+      } else {
+        setEndcardMessage(data.message || '上传失败');
+      }
+    } catch (error) {
+      console.error('上传境哥牌失败:', error);
+      setEndcardMessage('上传失败，请重试');
+    } finally {
+      setUploadingEndcard(false);
+    }
+  };
+
+  // 删除境哥牌
+  const handleDeleteEndcard = async (filename: string) => {
+    if (!confirm('确定要删除这张境哥牌吗？')) {
+      return;
+    }
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      const response = await fetch(`${apiUrl}/api/endcards/${filename}`, {
+        method: 'DELETE'
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setEndcards(endcards.filter(e => e.filename !== filename));
+      } else {
+        alert(data.message || '删除失败');
+      }
+    } catch (error) {
+      console.error('删除境哥牌失败:', error);
+      alert('删除失败，请重试');
+    }
+  };
+
   // 未认证时显示登录界面
   if (!isAuthenticated) {
     return (
@@ -583,17 +934,19 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
       <div className="admin-section">
         <h3>自动重启时间设置</h3>
         <div className="auto-restart-setting">
-          <label htmlFor="auto-restart-seconds">自动重启时间：</label>
-          <div className="auto-restart-control">
+          <label htmlFor="auto-restart-seconds">自动重启时间：{autoRestartSeconds}秒</label>
+          <div className="slider-input-control">
             <input
-              type="number"
+              type="range"
               id="auto-restart-seconds"
               min="5"
               max="60"
+              step="1"
+              className="parameter-slider"
               value={autoRestartSeconds}
-              onChange={(e) => setAutoRestartSeconds(parseInt(e.target.value) || 10)}
+              onChange={(e) => setAutoRestartSeconds(parseInt(e.target.value))}
             />
-            <span className="unit">秒</span>
+            <div className="slider-value">{autoRestartSeconds}秒</div>
           </div>
         </div>
       </div>
@@ -602,69 +955,84 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
         <h3>酒杯算法参数设置</h3>
         <div className="drink-algorithm-setting">
           <div className="drink-parameter-item">
-            <label htmlFor="drink-parameter">回合摸牌大于：</label>
-            <div className="drink-parameter-control">
+            <label htmlFor="drink-parameter">回合摸牌大于：{drinkParameter}</label>
+            <div className="slider-input-control">
               <input
-                type="number"
+                type="range"
                 id="drink-parameter"
                 min="1"
                 max="100"
+                step="1"
+                className="parameter-slider"
                 value={drinkParameter}
-                onChange={(e) => setDrinkParameter(parseInt(e.target.value) || 1)}
+                onChange={(e) => setDrinkParameter(parseInt(e.target.value))}
               />
-              <label>酒杯数量开始加1</label>
+              <div className="slider-value">{drinkParameter}</div>
             </div>
+            <label>酒杯数量开始加1</label>
           </div>
           <div className="drink-parameter-item">
-            <label htmlFor="first-card-drink-count">第一张牌酒杯数量：</label>
-            <div className="first-card-drink-control">
+            <label htmlFor="first-card-drink-count">第一张牌酒杯数量：{firstCardDrinkCount}</label>
+            <div className="slider-input-control">
               <input
-                type="number"
+                type="range"
                 id="first-card-drink-count"
                 min="1"
                 max="100"
+                step="1"
+                className="parameter-slider"
                 value={firstCardDrinkCount}
-                onChange={(e) => setFirstCardDrinkCount(parseInt(e.target.value) || 3)}
+                onChange={(e) => setFirstCardDrinkCount(parseInt(e.target.value))}
               />
+              <div className="slider-value">{firstCardDrinkCount}</div>
             </div>
           </div>
           <div className="drink-parameter-item">
-            <label htmlFor="last-card-drink-count">最后一张牌酒杯增加数量：</label>
-            <div className="last-card-drink-control">
+            <label htmlFor="last-card-drink-count">最后一张牌酒杯增加数量：{lastCardDrinkCount}</label>
+            <div className="slider-input-control">
               <input
-                type="number"
+                type="range"
                 id="last-card-drink-count"
                 min="1"
                 max="100"
+                step="1"
+                className="parameter-slider"
                 value={lastCardDrinkCount}
-                onChange={(e) => setLastCardDrinkCount(parseInt(e.target.value) || 2)}
+                onChange={(e) => setLastCardDrinkCount(parseInt(e.target.value))}
               />
+              <div className="slider-value">{lastCardDrinkCount}</div>
             </div>
           </div>
           <div className="drink-parameter-item">
-            <label htmlFor="item-flip-count-threshold">获得点名道具翻牌数：</label>
-            <div className="item-flip-control">
+            <label htmlFor="item-flip-count-threshold">获得点名道具翻牌数：{itemFlipCountThreshold}</label>
+            <div className="slider-input-control">
               <input
-                type="number"
+                type="range"
                 id="item-flip-count-threshold"
                 min="1"
                 max="20"
+                step="1"
+                className="parameter-slider"
                 value={itemFlipCountThreshold}
-                onChange={(e) => setItemFlipCountThreshold(parseInt(e.target.value) || 3)}
+                onChange={(e) => setItemFlipCountThreshold(parseInt(e.target.value))}
               />
+              <div className="slider-value">{itemFlipCountThreshold}</div>
             </div>
           </div>
           <div className="drink-parameter-item">
-            <label htmlFor="reverse-item-flip-count-threshold">获得反转道具翻牌数：</label>
-            <div className="item-flip-control">
+            <label htmlFor="reverse-item-flip-count-threshold">获得反转道具翻牌数：{reverseItemFlipCountThreshold}</label>
+            <div className="slider-input-control">
               <input
-                type="number"
+                type="range"
                 id="reverse-item-flip-count-threshold"
                 min="1"
                 max="20"
+                step="1"
+                className="parameter-slider"
                 value={reverseItemFlipCountThreshold}
-                onChange={(e) => setReverseItemFlipCountThreshold(parseInt(e.target.value) || 2)}
+                onChange={(e) => setReverseItemFlipCountThreshold(parseInt(e.target.value))}
               />
+              <div className="slider-value">{reverseItemFlipCountThreshold}</div>
             </div>
           </div>
         </div>
@@ -701,33 +1069,212 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
       </div>
 
       <div className="admin-section">
+        <h3>背景牌管理</h3>
+        
+        <div className="backcard-settings">
+          <div className="setting-item">
+            <label htmlFor="backcard-selection-mode">背景牌选择模式：</label>
+            <select
+              id="backcard-selection-mode"
+              value={backcardSelectionMode}
+              onChange={(e) => setBackcardSelectionMode(e.target.value)}
+              className="setting-select"
+            >
+              <option value="random">随机选择</option>
+              <option value="all">使用所有</option>
+              <option value="fixed">固定选择</option>
+            </select>
+          </div>
+          
+          {backcardSelectionMode === 'random' && (
+            <div className="setting-item">
+              <label htmlFor="backcard-selection-count">随机选择数量：{backcardSelectionCount}</label>
+              <div className="slider-input-control">
+                <input
+                  type="range"
+                  id="backcard-selection-count"
+                  min="1"
+                  max="50"
+                  step="1"
+                  className="parameter-slider"
+                  value={backcardSelectionCount}
+                  onChange={(e) => setBackcardSelectionCount(parseInt(e.target.value))}
+                />
+                <div className="slider-value">{backcardSelectionCount}</div>
+              </div>
+            </div>
+          )}
+          
+          {backcardSelectionMode === 'fixed' && (
+            <div className="setting-item">
+              <label>选择固定背景牌：</label>
+              <div className="fixed-backcards-selector">
+                {backcards.map((backcard) => (
+                  <div key={backcard.filename} className="fixed-backcard-option">
+                    <input
+                      type="checkbox"
+                      id={`fixed-${backcard.filename}`}
+                      checked={selectedBackcards.includes(backcard.filename)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedBackcards([...selectedBackcards, backcard.filename]);
+                        } else {
+                          setSelectedBackcards(selectedBackcards.filter(f => f !== backcard.filename));
+                        }
+                      }}
+                    />
+                    <label htmlFor={`fixed-${backcard.filename}`} className="fixed-backcard-label">
+                      <img src={backcard.url} alt={backcard.filename} />
+                      <span>{backcard.filename}</span>
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+        
+        <div className="backcard-upload">
+          <div className="upload-input-wrapper">
+            <input
+              type="file"
+              id="backcard-file"
+              accept="image/*"
+              onChange={handleBackcardUpload}
+              multiple
+              style={{ display: 'none' }}
+            />
+            <label htmlFor="backcard-file" className="upload-button">
+              {backcardFiles.length > 0 ? `已选择 ${backcardFiles.length} 个文件` : '选择图片'}
+            </label>
+          </div>
+          <button 
+            onClick={handleSubmitBackcardUpload}
+            disabled={uploadingBackcard || backcardFiles.length === 0}
+            className="upload-submit-button"
+          >
+            {uploadingBackcard ? '上传中...' : '上传'}
+          </button>
+          {backcardMessage && (
+            <div className={`upload-message ${backcardMessage.includes('成功') ? 'success' : 'error'}`}>
+              {backcardMessage}
+            </div>
+          )}
+        </div>
+        <div className="backcard-list">
+          {backcards.length === 0 ? (
+            <div className="empty-backcards">暂无背景牌</div>
+          ) : (
+            backcards.map((backcard) => (
+              <div key={backcard.filename} className="backcard-item">
+                <img 
+                  src={backcard.url} 
+                  alt={backcard.filename}
+                  className="backcard-preview"
+                />
+                <div className="backcard-info">
+                  <span className="backcard-filename">{backcard.filename}</span>
+                  <button 
+                    onClick={() => handleDeleteBackcard(backcard.filename)}
+                    className="delete-backcard-button"
+                  >
+                    删除
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      <div className="admin-section">
+        <h3>境哥牌管理</h3>
+        
+        <div className="endcard-upload">
+          <div className="upload-input-wrapper">
+            <input
+              type="file"
+              id="endcard-file"
+              accept="image/*"
+              onChange={handleEndcardUpload}
+              multiple
+              style={{ display: 'none' }}
+            />
+            <label htmlFor="endcard-file" className="upload-button">
+              {endcardFiles.length > 0 ? `已选择 ${endcardFiles.length} 个文件` : '选择图片'}
+            </label>
+          </div>
+          <button 
+            onClick={handleSubmitEndcardUpload}
+            disabled={uploadingEndcard || endcardFiles.length === 0}
+            className="upload-submit-button"
+          >
+            {uploadingEndcard ? '上传中...' : '上传'}
+          </button>
+          {endcardMessage && (
+            <div className={`upload-message ${endcardMessage.includes('成功') ? 'success' : 'error'}`}>
+              {endcardMessage}
+            </div>
+          )}
+        </div>
+        <div className="backcard-list">
+          {endcards.length === 0 ? (
+            <div className="empty-backcards">暂无境哥牌</div>
+          ) : (
+            endcards.map((endcard) => (
+              <div key={endcard.filename} className="backcard-item">
+                <img 
+                  src={endcard.url} 
+                  alt={endcard.filename}
+                  className="backcard-preview"
+                />
+                <div className="backcard-info">
+                  <span className="backcard-filename">{endcard.filename}</span>
+                  <button 
+                    onClick={() => handleDeleteEndcard(endcard.filename)}
+                    className="delete-backcard-button"
+                  >
+                    删除
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      <div className="admin-section">
         <h3>超时设置</h3>
         <div className="timeout-setting">
-          <label htmlFor="timeout">玩家离线超时时间：</label>
-          <div className="timeout-control">
+          <label htmlFor="timeout">玩家离线超时时间：{timeoutMinutes}分钟</label>
+          <div className="slider-input-control">
             <input
-              type="number"
+              type="range"
               id="timeout"
               min="1"
               max="30"
+              step="1"
+              className="parameter-slider"
               value={timeoutMinutes}
               onChange={handleTimeoutChange}
             />
-            <span className="unit">分钟</span>
+            <div className="slider-value">{timeoutMinutes}分钟</div>
           </div>
         </div>
         <div className="timeout-setting">
-          <label htmlFor="turn-timeout">回合超时时间：</label>
-          <div className="timeout-control">
+          <label htmlFor="turn-timeout">回合超时时间：{turnTimeoutSeconds}秒</label>
+          <div className="slider-input-control">
             <input
-              type="number"
+              type="range"
               id="turn-timeout"
               min="5"
               max="300"
+              step="5"
+              className="parameter-slider"
               value={turnTimeoutSeconds}
               onChange={(e) => setTurnTimeoutSeconds(Number(e.target.value))}
             />
-            <span className="unit">秒</span>
+            <div className="slider-value">{turnTimeoutSeconds}秒</div>
           </div>
         </div>
       </div>

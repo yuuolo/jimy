@@ -17,14 +17,42 @@ function selectRandomImages() {
     }).map(file => `/png/backcard/${file}`);
     
     // 读取endcard目录
-    const endcardDir = path.join(publicDir, 'png', 'endcard');
+    const endcardConfig = userPreferences.endcardConfig || {};
+    const endcardDir = path.join(publicDir, endcardConfig.directory || 'png/endcard');
     const endcardImages = fs.readdirSync(endcardDir).filter(file => {
       return /\.(jpg|jpeg|png|gif|svg)$/i.test(file);
-    }).map(file => `/png/endcard/${file}`);
+    }).map(file => `/${endcardConfig.directory || 'png/endcard'}/${file}`);
     
-    // 从backcard目录随机选择3张图片
-    const shuffledBackcards = [...backcardImages].sort(() => Math.random() - 0.5);
-    const selectedBackcards = shuffledBackcards.slice(0, 3);
+    // 根据选择模式选择背景牌
+    let selectedBackcards = [];
+    const selectionMode = userPreferences.backcardSelectionMode || 'random';
+    const selectionCount = userPreferences.backcardSelectionCount || 3;
+    
+    if (selectionMode === 'all') {
+      // 使用所有背景牌
+      selectedBackcards = backcardImages.length > 0 ? backcardImages : ['/png/backcard/2.jpg'];
+    } else if (selectionMode === 'fixed') {
+      // 使用固定的背景牌列表
+      const fixedBackcards = userPreferences.selectedBackcards || [];
+      if (fixedBackcards.length > 0) {
+        selectedBackcards = fixedBackcards.filter(filename => 
+          backcardImages.some(img => img.includes(filename))
+        ).map(filename => `/png/backcard/${filename}`);
+      }
+      if (selectedBackcards.length === 0) {
+        selectedBackcards = ['/png/backcard/2.jpg'];
+      }
+    } else {
+      // 随机选择模式（默认）
+      const shuffledBackcards = [...backcardImages].sort(() => Math.random() - 0.5);
+      const count = Math.min(selectionCount, backcardImages.length);
+      selectedBackcards = shuffledBackcards.slice(0, count);
+    }
+    
+    // 如果没有背景牌，使用默认图片
+    if (selectedBackcards.length === 0) {
+      selectedBackcards = ['/png/backcard/2.jpg'];
+    }
     
     // 从endcard目录随机选择1张图片
     let selectedEndcard = '';
@@ -41,7 +69,7 @@ function selectRandomImages() {
     // 回退到默认图片
     return {
       backcardImages: ['/png/backcard/2.jpg'],
-      endcardImage: '/png/endcard/1.jpg'
+      endcardImage: `/${userPreferences.endcardConfig?.directory || 'png/endcard'}/${userPreferences.endcardConfig?.defaultImage || '1.jpg'}`
     };
   }
 }
@@ -145,6 +173,53 @@ let userPreferences = readConfig() || {
   reverseItemFlipCountThreshold: 2
 };
 
+// 境哥牌图片信息缓存
+let endcardCache = {
+  data: {},
+  timestamp: 0
+};
+
+// 检查缓存是否过期
+function isCacheExpired() {
+  const expiryMinutes = userPreferences.endcardConfig?.cacheExpiryMinutes || 30;
+  return Date.now() - endcardCache.timestamp > expiryMinutes * 60 * 1000;
+}
+
+// 清除过期缓存
+function clearExpiredCache() {
+  if (isCacheExpired()) {
+    endcardCache = {
+      data: {},
+      timestamp: Date.now()
+    };
+    Logger.info('境哥牌缓存已过期并清除');
+  }
+}
+
+// 缓存境哥牌图片信息
+function cacheEndcardInfo(filename, info) {
+  if (userPreferences.endcardConfig?.cacheEnabled !== false) {
+    endcardCache.data[filename] = {
+      info: info,
+      timestamp: Date.now()
+    };
+    endcardCache.timestamp = Date.now();
+  }
+}
+
+// 获取缓存的境哥牌图片信息
+function getCachedEndcardInfo(filename) {
+  if (userPreferences.endcardConfig?.cacheEnabled !== false) {
+    clearExpiredCache();
+    const cached = endcardCache.data[filename];
+    if (cached) {
+      Logger.debug('从缓存获取境哥牌信息', { filename });
+      return cached.info;
+    }
+  }
+  return null;
+}
+
 // 全局游戏状态
 let gameState = {
   id:1,
@@ -190,6 +265,56 @@ const upload = multer({
   }
 });
 
+// 配置multer用于背景牌上传
+const backcardStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'public/png/backcard/');
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const uploadBackcard = multer({
+  storage: backcardStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB限制
+  },
+  fileFilter: function (req, file, cb) {
+    // 只接受图片文件
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new Error('只接受图片文件'), false);
+    }
+    cb(null, true);
+  }
+});
+
+// 配置multer用于境哥牌上传
+const endcardStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'public/png/endcard/');
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const uploadEndcard = multer({
+  storage: endcardStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB限制
+  },
+  fileFilter: function (req, file, cb) {
+    // 只接受图片文件
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new Error('只接受图片文件'), false);
+    }
+    cb(null, true);
+  }
+});
+
 // 简单的健康检查接口
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: '服务器运行正常' });
@@ -213,7 +338,10 @@ app.post('/api/preferences', (req, res) => {
     lastCardDrinkCount,
     turnTimeoutSeconds,
     itemFlipCountThreshold,
-    reverseItemFlipCountThreshold 
+    reverseItemFlipCountThreshold,
+    backcardSelectionMode,
+    backcardSelectionCount,
+    selectedBackcards
   } = req.body;
   let updated = false;
   
@@ -292,6 +420,27 @@ app.post('/api/preferences', (req, res) => {
   if (reverseItemFlipCountThreshold && typeof reverseItemFlipCountThreshold === 'number' && reverseItemFlipCountThreshold >= 1 && reverseItemFlipCountThreshold <= 20) {
     userPreferences.reverseItemFlipCountThreshold = reverseItemFlipCountThreshold;
     Logger.info('反转道具翻牌数阈值已更新', { reverseItemFlipCountThreshold });
+    updated = true;
+  }
+  
+  // 更新背景牌选择模式
+  if (backcardSelectionMode && typeof backcardSelectionMode === 'string' && ['random', 'all', 'fixed'].includes(backcardSelectionMode)) {
+    userPreferences.backcardSelectionMode = backcardSelectionMode;
+    Logger.info('背景牌选择模式已更新', { backcardSelectionMode });
+    updated = true;
+  }
+  
+  // 更新背景牌选择数量
+  if (backcardSelectionCount && typeof backcardSelectionCount === 'number' && backcardSelectionCount >= 1 && backcardSelectionCount <= 50) {
+    userPreferences.backcardSelectionCount = backcardSelectionCount;
+    Logger.info('背景牌选择数量已更新', { backcardSelectionCount });
+    updated = true;
+  }
+  
+  // 更新固定背景牌列表
+  if (selectedBackcards && Array.isArray(selectedBackcards)) {
+    userPreferences.selectedBackcards = selectedBackcards;
+    Logger.info('固定背景牌列表已更新', { selectedBackcards });
     updated = true;
   }
   
@@ -1284,6 +1433,173 @@ app.get('/api/images', (req, res) => {
   } catch (error) {
     Logger.error('获取图片列表失败', { error: error.message });
     res.status(500).json({ error: '获取图片列表失败' });
+  }
+});
+
+// 获取背景牌列表
+app.get('/api/backcards', (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const backcardDir = path.join(__dirname, 'public/png/backcard');
+    
+    if (!fs.existsSync(backcardDir)) {
+      fs.mkdirSync(backcardDir, { recursive: true });
+      return res.json({ success: true, backcards: [] });
+    }
+    
+    const files = fs.readdirSync(backcardDir)
+      .filter(file => /\.(jpg|jpeg|png|gif|webp)$/i.test(file))
+      .sort((a, b) => {
+        const statA = fs.statSync(path.join(backcardDir, a));
+        const statB = fs.statSync(path.join(backcardDir, b));
+        return statB.mtimeMs - statA.mtimeMs;
+      });
+    
+    const backcards = files.map(file => ({
+      filename: file,
+      url: `/png/backcard/${file}`
+    }));
+    
+    res.json({ success: true, backcards });
+  } catch (error) {
+    Logger.error('获取背景牌列表失败', { error: error.message });
+    res.status(500).json({ success: false, message: '获取背景牌列表失败' });
+  }
+});
+
+// 上传背景牌
+app.post('/api/upload-backcard', uploadBackcard.array('backcards', 10), (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ success: false, message: '没有上传文件' });
+    }
+    
+    const uploadedFiles = [];
+    for (const file of req.files) {
+      Logger.info('背景牌上传成功', { 
+        filename: file.filename,
+        size: file.size,
+        mimetype: file.mimetype 
+      });
+      uploadedFiles.push({
+        filename: file.filename,
+        url: `/png/backcard/${file.filename}`
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: '背景牌上传成功',
+      uploadedFiles: uploadedFiles.length,
+      files: uploadedFiles
+    });
+  } catch (error) {
+    Logger.error('背景牌上传失败', { error: error.message });
+    res.status(500).json({ success: false, message: error.message || '上传失败' });
+  }
+});
+
+// 上传境哥牌
+app.post('/api/upload-endcard', uploadEndcard.array('endcards', 10), (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ success: false, message: '没有上传文件' });
+    }
+    
+    const uploadedFiles = [];
+    for (const file of req.files) {
+      Logger.info('境哥牌上传成功', { 
+        filename: file.filename,
+        size: file.size,
+        mimetype: file.mimetype 
+      });
+      uploadedFiles.push({
+        filename: file.filename,
+        url: `/png/endcard/${file.filename}`
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: '境哥牌上传成功',
+      uploadedFiles: uploadedFiles.length,
+      files: uploadedFiles
+    });
+  } catch (error) {
+    Logger.error('境哥牌上传失败', { error: error.message });
+    res.status(500).json({ success: false, message: error.message || '上传失败' });
+  }
+});
+
+// 获取境哥牌列表
+app.get('/api/endcards', (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const endcardDir = path.join(__dirname, 'public/png/endcard');
+    
+    if (!fs.existsSync(endcardDir)) {
+      fs.mkdirSync(endcardDir, { recursive: true });
+    }
+    
+    const files = fs.readdirSync(endcardDir).filter(file => {
+      return /\.(jpg|jpeg|png|gif|svg)$/i.test(file);
+    });
+    
+    const endcards = files.map(filename => ({
+      filename: filename,
+      url: `/png/endcard/${filename}`
+    }));
+    
+    res.json({ success: true, endcards: endcards });
+  } catch (error) {
+    Logger.error('获取境哥牌列表失败', { error: error.message });
+    res.status(500).json({ success: false, message: '获取境哥牌列表失败' });
+  }
+});
+
+// 删除境哥牌
+app.delete('/api/endcards/:filename', (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const filename = req.params.filename;
+    const filePath = path.join(__dirname, 'public/png/endcard', filename);
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, message: '文件不存在' });
+    }
+    
+    fs.unlinkSync(filePath);
+    Logger.info('境哥牌删除成功', { filename });
+    
+    res.json({ success: true, message: '境哥牌删除成功' });
+  } catch (error) {
+    Logger.error('境哥牌删除失败', { error: error.message });
+    res.status(500).json({ success: false, message: '删除失败' });
+  }
+});
+
+// 删除背景牌
+app.delete('/api/backcards/:filename', (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const filename = req.params.filename;
+    const filePath = path.join(__dirname, 'public/png/backcard', filename);
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, message: '文件不存在' });
+    }
+    
+    fs.unlinkSync(filePath);
+    Logger.info('背景牌删除成功', { filename });
+    
+    res.json({ success: true, message: '背景牌删除成功' });
+  } catch (error) {
+    Logger.error('背景牌删除失败', { error: error.message });
+    res.status(500).json({ success: false, message: '删除失败' });
   }
 });
 

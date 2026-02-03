@@ -78,6 +78,15 @@ button:focus-visible {
     gap: 2rem;
   }
   
+  /* 隐藏移动端按钮 */
+  .mobile-admin-container {
+    display: none;
+  }
+  
+  .mobile-info-container {
+    display: none;
+  }
+  
   /* 右侧布局区域 */
   .right-layout {
     flex: 0 0 250px;
@@ -247,7 +256,37 @@ button:focus-visible {
     color: #ff6b6b;
     margin: 10px 0;
   }
-  
+
+  /* 境哥牌图片信息 */
+  .endcard-info {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+
+  .endcard-info p {
+    font-size: 1rem !important;
+    color: #f0f0f0;
+    margin: 0.5rem 0 !important;
+    line-height: 1.4;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+  }
+
+  .endcard-filename {
+    font-weight: bold;
+    color: #ffd700 !important;
+  }
+
+  .endcard-size {
+    color: #98fb98 !important;
+  }
+
+  .endcard-modified {
+    color: #add8e6 !important;
+  }
+
   /* 赢家广播 */
   .winner-message h2 {
     font-size: 64px;
@@ -624,6 +663,22 @@ button:focus-visible {
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
 }
 
+/* 背景牌悬停动画 */
+.card:not(.disabled):hover .card-front img {
+  transform: scale(1.05);
+  transition: transform 0.3s ease;
+}
+
+.card:not(.disabled):hover .card-back img {
+  transform: scale(1.05);
+  transition: transform 0.3s ease;
+}
+
+.card:not(.disabled) .card-front img,
+.card:not(.disabled) .card-back img {
+  transition: transform 0.3s ease;
+}
+
 .card-front {
   background-color: #646cff;
   display: flex;
@@ -702,11 +757,13 @@ button:focus-visible {
   align-items: center;
   z-index: 1000;
   animation: fadeIn 0.5s ease-in-out;
+  will-change: opacity;
 }
 
 .jing-card-container {
   text-align: center;
   animation: scaleIn 0.5s ease-in-out;
+  will-change: transform;
 }
 
 .jing-card-large {
@@ -715,6 +772,7 @@ button:focus-visible {
   border-radius: 12px;
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
   animation: pulse 2s infinite;
+  will-change: transform, opacity;
 }
 
 .jing-card-text {
@@ -830,33 +888,41 @@ button:focus-visible {
 }
 
 .jing-card-buttons {
-  position: fixed;
-  bottom: 2rem;
-  left: 50%;
-  transform: translateX(-50%);
+  margin-top: 2rem;
   display: flex;
   gap: 1rem;
   justify-content: center;
-  z-index: 1000;
 }
 
 .jing-card-buttons .restart-button {
-  padding: 0.8rem 1.5rem;
-  border-radius: 6px;
-  font-size: 1rem;
+  padding: 1rem 2rem;
+  border-radius: 8px;
+  font-size: 1.1rem;
   cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.jing-card-buttons .restart-button {
-  background-color: transparent;
-  color: #fff;
-  border: 1px solid #fff;
+  transition: all 0.2s ease;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  font-weight: 600;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 .jing-card-buttons .restart-button:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-color: #fff;
+  background-color: #45a049;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+}
+
+.jing-card-buttons .restart-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.jing-card-buttons .restart-button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 @keyframes fadeIn {
@@ -1036,6 +1102,21 @@ button:focus-visible {
   background-color: #ffca28;
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+/* 道具按钮禁用状态 */
+.item-button-disabled {
+  background-color: #6c757d !important;
+  color: #adb5bd !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.item-button-disabled:hover {
+  background-color: #6c757d !important;
+  transform: none !important;
+  box-shadow: none !important;
 }
 
 .item-button svg {
@@ -1370,6 +1451,26 @@ input:disabled {
   background-color: #5a6268;
 }
 
+/* 说明按钮样式 */
+.info-button {
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-left: 8px;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+}
+
+.info-button:hover {
+  background-color: #5a6268;
+}
+
 .exit-queue-button {
   background-color: #dc3545;
   color: white;
@@ -1493,7 +1594,7 @@ input:disabled {
 .admin-page {
   background-color: white;
   border-radius: 8px;
-  padding: 30px;
+  padding: 20px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   width: 100%;
   max-width: 800px;
@@ -1504,20 +1605,20 @@ input:disabled {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 30px;
-  padding-bottom: 15px;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
   border-bottom: 2px solid #e9ecef;
 }
 
 .admin-header h2 {
   color: #495057;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
 }
 
 .header-buttons {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
 }
 
@@ -1526,8 +1627,8 @@ input:disabled {
   color: white;
   border: none;
   border-radius: 4px;
-  padding: 8px 16px;
-  font-size: 14px;
+  padding: 6px 12px;
+  font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -1541,8 +1642,8 @@ input:disabled {
   color: white;
   border: none;
   border-radius: 4px;
-  padding: 8px 16px;
-  font-size: 14px;
+  padding: 6px 12px;
+  font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -1552,16 +1653,16 @@ input:disabled {
 }
 
 .admin-section {
-  margin-bottom: 30px;
-  padding: 20px;
+  margin-bottom: 20px;
+  padding: 15px;
   background-color: #f8f9fa;
   border-radius: 6px;
   border: 1px solid #e9ecef;
 }
 
 .admin-section h3 {
-  margin-bottom: 15px;
-  font-size: 16px;
+  margin-bottom: 12px;
+  font-size: 15px;
   font-weight: 600;
   color: #495057;
 }
@@ -1569,12 +1670,12 @@ input:disabled {
 .timeout-setting {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 15px;
   flex-wrap: wrap;
-  padding: 12px 16px;
+  padding: 10px 14px;
   background: #f8f9fa;
   border-radius: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   border: 1px solid #e9ecef;
 }
 
@@ -1660,34 +1761,211 @@ input:disabled {
 .drink-algorithm-setting {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .drink-parameter-item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
-  padding: 12px;
+  padding: 10px;
   background-color: #ffffff;
   border-radius: 4px;
   border: 1px solid #e9ecef;
 }
 
 .drink-parameter-item label {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: #495057;
   white-space: nowrap;
-  min-width: 150px;
+  min-width: 140px;
 }
 
-.drink-parameter-control,
-.first-card-drink-control,
-.last-card-drink-control {
+.drink-parameter-control, .first-card-drink-control, .last-card-drink-control, .item-flip-control {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* 数字输入控件样式 */
+.number-input-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.number-input-button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #ced4da;
+  background-color: #ffffff;
+  color: #495057;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.number-input-button.decrease {
+  border-radius: 4px 0 0 4px;
+  border-right: none;
+}
+
+.number-input-button.increase {
+  border-radius: 0 4px 4px 0;
+  border-left: none;
+}
+
+.number-input-button:hover {
+  background-color: #f8f9fa;
+  border-color: #adb5bd;
+}
+
+.number-input-button:active {
+  background-color: #e9ecef;
+  transform: scale(0.95);
+}
+
+.number-input-control input {
+  flex: 1;
+  text-align: center;
+  border-radius: 0;
+  border: 1px solid #ced4da;
+  min-width: 60px;
+}
+
+.number-input-control label {
+  margin-left: 8px;
+  font-size: 13px;
+  color: #6c757d;
+  white-space: nowrap;
+}
+
+/* 滑块输入控件样式 */
+.slider-input-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  margin: 8px 0;
+}
+
+.parameter-slider {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: #e9ecef;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.parameter-slider:hover {
+  background: #dee2e6;
+}
+
+/* 滑块轨道样式 */
+.parameter-slider::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 6px;
+  cursor: pointer;
+  background: #e9ecef;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+
+.parameter-slider::-moz-range-track {
+  width: 100%;
+  height: 6px;
+  cursor: pointer;
+  background: #e9ecef;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+
+/* 滑块拇指样式 */
+.parameter-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #646cff;
+  cursor: pointer;
+  margin-top: -7px;
+  box-shadow: 0 2px 6px rgba(100, 108, 255, 0.3);
+  transition: all 0.2s;
+}
+
+.parameter-slider::-webkit-slider-thumb:hover {
+  background: #535bf2;
+  transform: scale(1.1);
+  box-shadow: 0 3px 8px rgba(100, 108, 255, 0.4);
+}
+
+.parameter-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #646cff;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 6px rgba(100, 108, 255, 0.3);
+  transition: all 0.2s;
+}
+
+.parameter-slider::-moz-range-thumb:hover {
+  background: #535bf2;
+  transform: scale(1.1);
+  box-shadow: 0 3px 8px rgba(100, 108, 255, 0.4);
+}
+
+/* 滑块值显示 */
+.slider-value {
+  min-width: 40px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: #495057;
+  background-color: #ffffff;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+/* 移动端滑块优化 */
+@media (max-width: 768px) {
+  .parameter-slider {
+    height: 8px;
+  }
+  
+  .parameter-slider::-webkit-slider-thumb {
+    width: 24px;
+    height: 24px;
+    margin-top: -8px;
+  }
+  
+  .parameter-slider::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+  }
+  
+  .slider-value {
+    min-width: 50px;
+    font-size: 16px;
+    padding: 6px 10px;
+  }
 }
 
 .drink-parameter-control input,
@@ -1751,6 +2029,224 @@ input:disabled {
   background-color: #ffffff;
   border-radius: 4px;
   border: 1px solid #e9ecef;
+}
+
+/* 背景牌管理样式 */
+.backcard-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background-color: #ffffff;
+  border-radius: 4px;
+  border: 1px solid #e9ecef;
+  margin-bottom: 20px;
+}
+
+.backcard-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 16px;
+  padding: 16px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.empty-backcards {
+  text-align: center;
+  padding: 40px;
+  color: #6c757d;
+  font-size: 14px;
+}
+
+.backcard-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background-color: #ffffff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.backcard-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.backcard-preview {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.backcard-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.backcard-filename {
+  font-size: 12px;
+  color: #495057;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.delete-backcard-button {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.delete-backcard-button:hover {
+  background-color: #c82333;
+}
+
+/* 背景牌设置样式 */
+.backcard-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  background-color: #ffffff;
+  border-radius: 4px;
+  border: 1px solid #e9ecef;
+  margin-bottom: 15px;
+}
+
+.setting-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.setting-item label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #495057;
+}
+
+.setting-select {
+  padding: 6px 10px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 13px;
+  background-color: #ffffff;
+  cursor: pointer;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.setting-select:focus {
+  outline: none;
+  border-color: #646cff;
+  box-shadow: 0 0 0 0.2rem rgba(100, 108, 255, 0.25);
+}
+
+.setting-input {
+  padding: 6px 10px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 13px;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.setting-input:focus {
+  outline: none;
+  border-color: #646cff;
+  box-shadow: 0 0 0 0.2rem rgba(100, 108, 255, 0.25);
+}
+
+/* 移动端number输入框优化 */
+@media (max-width: 768px) {
+  .setting-input {
+    padding: 12px 16px;
+    font-size: 16px;
+    min-height: 48px;
+  }
+  
+  /* 增大number输入框的上下按钮点击区域 */
+  .setting-input[type="number"]::-webkit-inner-spin-button,
+  .setting-input[type="number"]::-webkit-outer-spin-button {
+    height: 40px;
+    width: 30px;
+    opacity: 1;
+  }
+  
+  /* 调整number输入框的padding，为上下按钮留出空间 */
+  .setting-input[type="number"] {
+    padding-right: 40px;
+  }
+  
+  /* 隐藏PC端的说明按钮和管理按钮 */
+  .info-button {
+    display: none;
+  }
+  
+  .admin-button {
+    display: none;
+  }
+}
+
+.fixed-backcards-selector {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.fixed-backcard-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  border: 1px solid #e9ecef;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.fixed-backcard-option:hover {
+  background-color: #e9ecef;
+  border-color: #dee2e6;
+}
+
+.fixed-backcard-option input[type="checkbox"] {
+  margin-top: 4px;
+  cursor: pointer;
+}
+
+.fixed-backcard-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  flex: 1;
+}
+
+.fixed-backcard-label img {
+  width: 100%;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.fixed-backcard-label span {
+  font-size: 12px;
+  color: #495057;
+  word-break: break-all;
 }
 
 .upload-input-wrapper {
