@@ -98,6 +98,23 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
   const [isSelectingPlayer, setIsSelectingPlayer] = useState(false);
   const [showGameIni, setShowGameIni] = useState(false);
   const [gameIniTimestamp, setGameIniTimestamp] = useState<number>(Date.now());
+  const prevIsMyTurnRef = useRef(false);
+  const [drinkTextConfig, setDrinkTextConfig] = useState({
+    enabled: false,
+    texts: {
+      '1': '',
+      '2': '',
+      '3': '',
+      '4': '',
+      '5': '',
+      '6': '',
+      '7': '',
+      '8': '',
+      '9': '',
+      '10': '',
+      '>10': ''
+    }
+  });
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const flipAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -105,10 +122,55 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
   const restartAudioRef = useRef<HTMLAudioElement | null>(null);
   const heartbeatAudioRef = useRef<HTMLAudioElement | null>(null);
   const paidaAudioRef = useRef<HTMLAudioElement | null>(null);
+  const turnStartAudioRef = useRef<HTMLAudioElement | null>(null);
+  const countdownWarningAudioRef = useRef<HTMLAudioElement | null>(null);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const getDrinkArtText = useCallback((drinkCount: number | undefined): string => {
-    return (drinkCount || 0).toString();
+    const count = drinkCount || 0;
+    
+    if (drinkTextConfig.enabled) {
+      if (count > 10) {
+        return drinkTextConfig.texts['>10'] || count.toString();
+      } else {
+        return drinkTextConfig.texts[count.toString()] || count.toString();
+      }
+    }
+    
+    return count.toString();
+  }, [drinkTextConfig]);
+
+  // 加载通俗语配置
+  useEffect(() => {
+    const loadDrinkTextConfig = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+        const response = await fetch(`${apiUrl}/api/drink-texts`);
+        const data = await response.json();
+        if (data.success) {
+          setDrinkTextConfig({
+            enabled: data.enabled || false,
+            texts: data.texts || {
+              '1': '',
+              '2': '',
+              '3': '',
+              '4': '',
+              '5': '',
+              '6': '',
+              '7': '',
+              '8': '',
+              '9': '',
+              '10': '',
+              '>10': ''
+            }
+          });
+        }
+      } catch (error) {
+        console.error('加载通俗语配置失败:', error);
+      }
+    };
+    
+    loadDrinkTextConfig();
   }, []);
 
   // 监听酒杯数量变化，播放心跳声
@@ -306,7 +368,28 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       if (gameState.queueState) {
         const isTurn = !!(gameState.queueState.turnPlayer && 
                       gameState.queueState.turnPlayer.id === user.id);
+        
+        // 当回合变为当前用户时播放提醒音效
+        if (isTurn && !prevIsMyTurnRef.current) {
+          // 播放音效
+          if (turnStartAudioRef.current) {
+            turnStartAudioRef.current.play().catch(e => console.error('播放音效失败:', e));
+          }
+          
+          // 播放文字转语音
+          speakText(`轮到你了，${user.nickname}`);
+          
+          // 显示浏览器通知
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('轮到你了！', {
+              body: `现在是你的回合，${user.nickname}`,
+              icon: '/favicon.ico'
+            });
+          }
+        }
+        
         setIsMyTurn(isTurn);
+        prevIsMyTurnRef.current = isTurn;
         setCurrentFlipCount(gameState.queueState.turnFlipCount || 0);
       }
       
@@ -344,7 +427,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
         }
       }
     }
-  }, [gameState, user.id, isMyTurn, handleRestartGame, autoRestartSeconds]);
+  }, [gameState, user.id, user.nickname, handleRestartGame, autoRestartSeconds, speakText]);
 
   useEffect(() => {
     if (gameState.gameOver && gameState.status === 'ended' && audioRef.current) {
@@ -367,6 +450,25 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       }
     }
   }, [gameState.gameOver, gameState.status]);
+
+  // 监听倒计时变化，播放警告音效
+  useEffect(() => {
+    if (turnCountdown > 0 && turnCountdown <= 3 && isMyTurn) {
+      // 播放倒计时警告音效
+      if (countdownWarningAudioRef.current) {
+        countdownWarningAudioRef.current.play().catch(e => console.error('播放音效失败:', e));
+      }
+    }
+  }, [turnCountdown, isMyTurn]);
+
+  // 请求通知权限
+  useEffect(() => {
+    if ('Notification' in window) {
+      Notification.requestPermission().then(permission => {
+        console.log('通知权限:', permission);
+      });
+    }
+  }, []);
 
   useEffect(() => {
     if (!socket) return;
@@ -426,8 +528,16 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       console.log('反转道具已使用:', data);
     };
 
+    const handleTurnStarted = (data: any) => {
+      console.log('回合开始:', data);
+      if (data.playerId === user.id) {
+        speakText(`轮到你了，${data.playerNickname}`);
+      }
+    };
+
     socket.on('jingCardFound', handleJingCardFound);
     socket.on('turnEnded', handleTurnEnded);
+    socket.on('turnStarted', handleTurnStarted);
     socket.on('turnCountdownUpdated', handleTurnCountdownUpdated);
     socket.on('error', handleError);
     socket.on('jingCardClick', handleJingCardClick);
@@ -443,6 +553,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
     return () => {
       socket.off('jingCardFound', handleJingCardFound);
       socket.off('turnEnded', handleTurnEnded);
+      socket.off('turnStarted', handleTurnStarted);
       socket.off('turnCountdownUpdated', handleTurnCountdownUpdated);
       socket.off('error', handleError);
       socket.off('jingCardClick', handleJingCardClick);
@@ -497,6 +608,28 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
 
   return (
     <div className="flip-card-game">
+      {/* 回合通知栏 */}
+      {isMyTurn && (
+        <div className="turn-notification">
+          <div className="notification-content">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+            </svg>
+            <span>当前是你的回合！</span>
+          </div>
+        </div>
+      )}
+
+      {/* 倒计时显示 */}
+      {isMyTurn && turnCountdown > 0 && (
+        <div className="turn-countdown">
+          <div className={`countdown-circle ${turnCountdown <= 3 ? 'warning' : ''}`}>
+            <span className="countdown-number">{turnCountdown}</span>
+          </div>
+          <span className="countdown-label">剩余时间</span>
+        </div>
+      )}
+
       <div className="right-layout">
         <div className="game-header">
           <div className="game-header-top">
@@ -661,7 +794,17 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
             />
             <div className="jing-card-text">
               <h3>{randomWinMessage || '恭喜你找到境哥牌！'}</h3>
-              <p className="drink-punishment">{gameState.queueState?.turnPlayer?.nickname || '玩家'}罚酒{gameState.drinkCount}杯</p>
+              <p className="drink-punishment">
+                {gameState.queueState?.turnPlayer?.nickname || '玩家'}罚酒
+                {drinkTextConfig.enabled ? (
+                  gameState.drinkCount > 10 ? 
+                    drinkTextConfig.texts['>10'] || gameState.drinkCount.toString() : 
+                    drinkTextConfig.texts[gameState.drinkCount.toString()] || gameState.drinkCount.toString()
+                ) : (
+                  gameState.drinkCount
+                )}
+                {!drinkTextConfig.enabled && '杯'}
+              </p>
             </div>
             <div className="jing-card-buttons">
               <button 
@@ -689,7 +832,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
                   <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="currentColor" />
                   </svg>
-                  点名
+                  指定
                 </button>
               )}
               {gameState.item?.reverseItem?.hasItem && gameState.item.reverseItem.itemPlayerId === user.id && !gameState.item.reverseItem.itemUsed && (
@@ -826,6 +969,12 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       <audio ref={paidaAudioRef} src="/sounds/paida.mp3" preload="auto">
         您的浏览器不支持音频元素。
        </audio>
+      <audio ref={turnStartAudioRef} src="/sounds/turn-start.mp3" preload="auto">
+        您的浏览器不支持音频元素。
+      </audio>
+      <audio ref={countdownWarningAudioRef} src="/sounds/countdown-warning.mp3" preload="auto">
+        您的浏览器不支持音频元素。
+      </audio>
     </div>
   );
 };

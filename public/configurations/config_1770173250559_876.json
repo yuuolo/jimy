@@ -1,0 +1,44 @@
+{
+  "id": "config_1770173250559_876",
+  "name": "主公局",
+  "config": {
+    "cardCount": 9,
+    "columns": 3,
+    "gameTitle": "壹城翻牌游戏",
+    "winMessages": [
+      "恭喜你找到境哥牌！",
+      "太棒了，你找到了！",
+      "运气真好，境哥牌被你找到了！",
+      "恭喜恭喜，你找到了境哥牌！",
+      "厉害了，境哥牌归你了！"
+    ],
+    "autoRestartSeconds": 15,
+    "drinkParameter": 1,
+    "firstCardDrinkCount": 1,
+    "lastCardDrinkCount": 2,
+    "turnTimeoutSeconds": 10,
+    "itemFlipCountThreshold": 3,
+    "reverseItemFlipCountThreshold": 2,
+    "backcardSelectionMode": "fixed",
+    "backcardSelectionCount": 9,
+    "selectedBackcards": [
+      "1770012539095-970628317.jpeg",
+      "1770170007721-485832570.jpeg"
+    ]
+  },
+  "resources": {
+    "backcards": [
+      {
+        "filename": "1770170007721-485832570.jpeg",
+        "url": "/png/backcard/1770170007721-485832570.jpeg"
+      }
+    ],
+    "endcards": [
+      {
+        "filename": "1770116151926-597115135.jpeg",
+        "url": "/png/endcard/1770116151926-597115135.jpeg"
+      }
+    ]
+  },
+  "createdAt": "2026-02-04T02:47:30.583Z"
+}

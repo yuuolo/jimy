@@ -61,6 +61,35 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
   const [uploadingEndcard, setUploadingEndcard] = useState(false);
   const [endcardMessage, setEndcardMessage] = useState('');
   
+  // 配置归档管理
+  const [configurations, setConfigurations] = useState<any[]>([]);
+  const [newConfigName, setNewConfigName] = useState('');
+  const [archivingConfig, setArchivingConfig] = useState(false);
+  const [applyingConfig, setApplyingConfig] = useState(false);
+  const [configMessage, setConfigMessage] = useState('');
+  
+  // 口令输入对话框
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [deletingConfigId, setDeletingConfigId] = useState('');
+  
+  // 通俗语管理
+  const [drinkTextEnabled, setDrinkTextEnabled] = useState(false);
+  const [drinkTexts, setDrinkTexts] = useState({
+    '1': '',
+    '2': '',
+    '3': '',
+    '4': '',
+    '5': '',
+    '6': '',
+    '7': '',
+    '8': '',
+    '9': '',
+    '10': '',
+    '>10': ''
+  });
+  const [drinkTextMessage, setDrinkTextMessage] = useState('');
+  
   const isInitialized = useRef(false);
 
   // 加载保存的偏好设置
@@ -547,6 +576,13 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
         }
       });
 
+      // 监听用户偏好设置更新
+      socket.on('preferencesUpdated', (data: any) => {
+        if (data.winMessages && Array.isArray(data.winMessages)) {
+          setWinMessages(data.winMessages);
+        }
+      });
+
       // 从服务器获取配置
       const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
       fetch(`${apiUrl}/api/preferences`)
@@ -587,6 +623,8 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
     return () => {
       socket?.off('admin:playersList');
       socket?.off('admin:currentTimeout');
+      socket?.off('queue:updated');
+      socket?.off('preferencesUpdated');
     };
   }, [isAuthenticated, socket]);
 
@@ -859,6 +897,285 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
       alert('删除失败，请重试');
     }
   };
+
+  // 加载背景牌列表
+  const loadBackcards = async () => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      const response = await fetch(`${apiUrl}/api/backcards`);
+      const data = await response.json();
+      if (data.success) {
+        setBackcards(data.backcards);
+      }
+    } catch (error) {
+      console.error('获取背景牌列表失败:', error);
+    }
+  };
+
+  // 加载境哥牌列表
+  const loadEndcards = async () => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      const response = await fetch(`${apiUrl}/api/endcards`);
+      const data = await response.json();
+      if (data.success) {
+        setEndcards(data.endcards);
+      }
+    } catch (error) {
+      console.error('获取境哥牌列表失败:', error);
+    }
+  };
+
+  // 加载已归档的配置
+  const loadConfigurations = async () => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      const response = await fetch(`${apiUrl}/api/configurations`);
+      const data = await response.json();
+
+      if (data.success) {
+        setConfigurations(data.configurations || []);
+      } else {
+        console.error('加载配置失败:', data.message);
+      }
+    } catch (error) {
+      console.error('加载配置失败:', error);
+    }
+  };
+
+  // 归档当前配置
+  const handleArchiveConfig = async () => {
+    if (!newConfigName.trim()) {
+      setConfigMessage('请输入配置名称');
+      return;
+    }
+
+    setArchivingConfig(true);
+    setConfigMessage('');
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      const response = await fetch(`${apiUrl}/api/configurations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: newConfigName.trim(),
+          config: {
+            cardCount,
+            columns,
+            gameTitle,
+            winMessages,
+            autoRestartSeconds,
+            drinkParameter,
+            firstCardDrinkCount,
+            lastCardDrinkCount,
+            turnTimeoutSeconds,
+            itemFlipCountThreshold,
+            reverseItemFlipCountThreshold,
+            backcardSelectionMode,
+            backcardSelectionCount,
+            selectedBackcards
+          },
+          resources: {
+            backcards: backcards,
+            endcards: endcards
+          }
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setConfigMessage('配置归档成功！');
+        setNewConfigName('');
+        // 重新加载配置列表
+        await loadConfigurations();
+      } else {
+        setConfigMessage(data.message || '归档失败');
+      }
+    } catch (error) {
+      console.error('归档配置失败:', error);
+      setConfigMessage('归档失败，请重试');
+    } finally {
+      setArchivingConfig(false);
+    }
+  };
+
+  // 应用已归档的配置
+  const handleApplyConfig = async (configId: string) => {
+    if (!confirm('确定要应用此配置吗？这将覆盖当前的所有配置和资源。')) {
+      return;
+    }
+
+    setApplyingConfig(true);
+    setConfigMessage('');
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      const response = await fetch(`${apiUrl}/api/configurations/${configId}/apply`, {
+        method: 'POST'
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setConfigMessage('配置应用成功！');
+        // 更新本地状态
+        const config = data.config;
+        if (config) {
+          setCardCount(config.cardCount || 9);
+          setColumns(config.columns || 3);
+          setGameTitle(config.gameTitle || '壹城翻牌游戏');
+          setWinMessages(config.winMessages || [
+            '恭喜你找到境哥牌！',
+            '太棒了，你找到了！',
+            '运气真好，境哥牌被你找到了！',
+            '恭喜恭喜，你找到了境哥牌！',
+            '厉害了，境哥牌归你了！'
+          ]);
+          setAutoRestartSeconds(config.autoRestartSeconds || 10);
+          setDrinkParameter(config.drinkParameter || 1);
+          setFirstCardDrinkCount(config.firstCardDrinkCount || 1);
+          setLastCardDrinkCount(config.lastCardDrinkCount || 1);
+          setTurnTimeoutSeconds(config.turnTimeoutSeconds || 30);
+          setItemFlipCountThreshold(config.itemFlipCountThreshold || 3);
+          setReverseItemFlipCountThreshold(config.reverseItemFlipCountThreshold || 2);
+          setBackcardSelectionMode(config.backcardSelectionMode || 'random');
+          setBackcardSelectionCount(config.backcardSelectionCount || 3);
+          setSelectedBackcards(config.selectedBackcards || []);
+        }
+        // 重新加载资源列表
+        await Promise.all([
+          loadBackcards(),
+          loadEndcards()
+        ]);
+      } else {
+        setConfigMessage(data.message || '应用失败');
+      }
+    } catch (error) {
+      console.error('应用配置失败:', error);
+      setConfigMessage('应用失败，请重试');
+    } finally {
+      setApplyingConfig(false);
+    }
+  };
+
+  // 删除已归档的配置
+  const handleDeleteConfig = async (configId: string) => {
+    setDeletingConfigId(configId);
+    setPasswordInput('');
+    setShowPasswordDialog(true);
+  };
+  
+  // 确认删除配置
+  const confirmDeleteConfig = async () => {
+    if (passwordInput !== '7879') {
+      setConfigMessage('口令错误！');
+      setShowPasswordDialog(false);
+      return;
+    }
+    
+    if (!confirm('确定要删除此配置吗？')) {
+      setShowPasswordDialog(false);
+      return;
+    }
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      const response = await fetch(`${apiUrl}/api/configurations/${deletingConfigId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ password: passwordInput })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setConfigurations(configurations.filter(config => config.id !== deletingConfigId));
+        setConfigMessage('配置删除成功！');
+      } else {
+        setConfigMessage(data.message || '删除失败');
+      }
+    } catch (error) {
+      console.error('删除配置失败:', error);
+      setConfigMessage('删除失败，请重试');
+    }
+    
+    setShowPasswordDialog(false);
+  };
+  
+  // 取消删除配置
+  const cancelDeleteConfig = () => {
+    setShowPasswordDialog(false);
+    setPasswordInput('');
+    setDeletingConfigId('');
+  };
+
+  // 加载通俗语配置
+  const loadDrinkTexts = async () => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      const response = await fetch(`${apiUrl}/api/drink-texts`);
+      const data = await response.json();
+      if (data.success) {
+        if (data.enabled !== undefined) {
+          setDrinkTextEnabled(data.enabled);
+        }
+        if (data.texts) {
+          setDrinkTexts(data.texts);
+        }
+      }
+    } catch (error) {
+      console.error('加载通俗语配置失败:', error);
+    }
+  };
+
+  // 保存通俗语配置
+  const saveDrinkTexts = async () => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      const response = await fetch(`${apiUrl}/api/drink-texts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          enabled: drinkTextEnabled,
+          texts: drinkTexts
+        })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setDrinkTextMessage('保存成功！');
+      } else {
+        setDrinkTextMessage(data.message || '保存失败');
+      }
+    } catch (error) {
+      console.error('保存通俗语配置失败:', error);
+      setDrinkTextMessage('保存失败，请重试');
+    }
+  };
+
+  // 更新单个通俗语
+  const updateDrinkText = (key: string, value: string) => {
+    setDrinkTexts(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
+  // 页面加载时加载配置列表
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadConfigurations();
+      loadDrinkTexts();
+    }
+  }, [isAuthenticated]);
 
   // 未认证时显示登录界面
   if (!isAuthenticated) {
@@ -1413,6 +1730,147 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
           )}
         </div>
       </div>
+
+      {/* 配置归档管理 */}
+      <div className="admin-section">
+        <h3>配置归档管理</h3>
+        
+        {/* 归档新配置 */}
+        <div className="config-archiving">
+          <div className="config-input-wrapper">
+            <input
+              type="text"
+              value={newConfigName}
+              onChange={(e) => setNewConfigName(e.target.value)}
+              placeholder="输入配置名称"
+              className="config-name-input"
+            />
+            <button 
+              onClick={handleArchiveConfig}
+              disabled={archivingConfig || !newConfigName.trim()}
+              className="archive-button"
+            >
+              {archivingConfig ? '归档中...' : '归档配置'}
+            </button>
+          </div>
+          
+          {/* 配置列表 */}
+          <div className="config-list">
+            <h4>已归档的配置</h4>
+            {configurations.length === 0 ? (
+              <div className="empty-configs">暂无归档配置</div>
+            ) : (
+              <ul className="config-items">
+                {configurations.map((config) => (
+                  <li key={config.id} className="config-item">
+                    <div className="config-info">
+                      <span className="config-name">{config.name}</span>
+                      <span className="config-date">{new Date(config.createdAt).toLocaleString()}</span>
+                    </div>
+                    <div className="config-actions">
+                      <button 
+                        onClick={() => handleApplyConfig(config.id)}
+                        disabled={applyingConfig}
+                        className="apply-button"
+                      >
+                        {applyingConfig ? '应用中...' : '应用'}
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteConfig(config.id)}
+                        className="delete-button"
+                      >
+                        删除
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          
+          {configMessage && (
+            <div className={`config-message ${configMessage.includes('成功') ? 'success' : 'error'}`}>
+              {configMessage}
+            </div>
+          )}
+        </div>
+      </div>
+      
+      {/* 通俗语管理 */}
+      <div className="admin-section">
+        <h3>通俗语管理</h3>
+        
+        <div className="drink-text-management">
+          <div className="drink-text-toggle">
+            <label>
+              <input
+                type="checkbox"
+                checked={drinkTextEnabled}
+                onChange={(e) => setDrinkTextEnabled(e.target.checked)}
+              />
+              启用通俗语
+            </label>
+          </div>
+          
+          <div className="drink-text-form">
+            {Object.entries(drinkTexts).map(([key, value]) => (
+              <div key={key} className="drink-text-item">
+                <label>{key}:</label>
+                <input
+                  type="text"
+                  value={value}
+                  onChange={(e) => updateDrinkText(key, e.target.value)}
+                  placeholder={`输入${key}的通俗文本`}
+                />
+              </div>
+            ))}
+          </div>
+          
+          <button 
+            onClick={saveDrinkTexts}
+            className="save-drink-texts-button"
+          >
+            保存通俗语配置
+          </button>
+          
+          {drinkTextMessage && (
+            <div className={`drink-text-message ${drinkTextMessage.includes('成功') ? 'success' : 'error'}`}>
+              {drinkTextMessage}
+            </div>
+          )}
+        </div>
+      </div>
+      
+      {/* 口令输入对话框 */}
+      {showPasswordDialog && (
+        <div className="password-dialog-overlay">
+          <div className="password-dialog">
+            <h4>请输入删除口令</h4>
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              placeholder="请输入口令"
+              className="password-input"
+              autoFocus
+            />
+            <div className="password-dialog-buttons">
+              <button 
+                onClick={cancelDeleteConfig}
+                className="password-dialog-button cancel"
+              >
+                取消
+              </button>
+              <button 
+                onClick={confirmDeleteConfig}
+                className="password-dialog-button confirm"
+              >
+                确认
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

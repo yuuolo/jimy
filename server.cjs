@@ -170,8 +170,38 @@ let userPreferences = readConfig() || {
   gameTitle: '壹城翻牌游戏',
   timeoutMinutes: 3,
   itemFlipCountThreshold: 3,
-  reverseItemFlipCountThreshold: 2
+  reverseItemFlipCountThreshold: 2,
+  winMessages: [
+    '恭喜你找到境哥牌！',
+    '太棒了，你找到了！',
+    '运气真好，境哥牌被你找到了！',
+    '恭喜恭喜，你找到了境哥牌！',
+    '厉害了，境哥牌归你了！'
+  ],
+  drinkTextConfig: {
+    enabled: false,
+    texts: {
+      '1': '',
+      '2': '',
+      '3': '',
+      '4': '',
+      '5': '',
+      '6': '',
+      '7': '',
+      '8': '',
+      '9': '',
+      '10': '',
+      '>10': ''
+    }
+  }
 };
+
+// 配置归档管理
+const CONFIGURATIONS_DIR = path.join(__dirname, 'public', 'configurations');
+// 确保配置目录存在
+if (!fs.existsSync(CONFIGURATIONS_DIR)) {
+  fs.mkdirSync(CONFIGURATIONS_DIR, { recursive: true });
+}
 
 // 境哥牌图片信息缓存
 let endcardCache = {
@@ -614,6 +644,13 @@ class PlayerQueue {
       this.turnCountdown = userPreferences.turnTimeoutSeconds || 10;
       io.emit('turnCountdownUpdated', { countdown: this.turnCountdown });
       
+      // 发送回合开始事件
+      io.emit('turnStarted', {
+        playerId: this.turnPlayer.id,
+        playerNickname: this.turnPlayer.nickname,
+        countdown: this.turnCountdown
+      });
+      
       this.turnTimer = setInterval(() => {
         this.turnCountdown--;
         io.emit('turnCountdownUpdated', { countdown: this.turnCountdown });
@@ -817,6 +854,9 @@ io.on('connection', (socket) => {
   socket.emit('welcome', {
     gameState: gameState
   });
+
+  // 发送用户偏好设置
+  socket.emit('preferencesUpdated', userPreferences);
 
   // 玩家加入队列
   socket.on('joinQueue', (playerData) => {
@@ -1578,6 +1618,282 @@ app.delete('/api/endcards/:filename', (req, res) => {
   } catch (error) {
     Logger.error('境哥牌删除失败', { error: error.message });
     res.status(500).json({ success: false, message: '删除失败' });
+  }
+});
+
+// 获取已归档的配置列表
+app.get('/api/configurations', (req, res) => {
+  try {
+    const configFiles = fs.readdirSync(CONFIGURATIONS_DIR).filter(file => {
+      return file.endsWith('.json');
+    });
+    
+    const configurations = configFiles.map(file => {
+      const configPath = path.join(CONFIGURATIONS_DIR, file);
+      const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      return configData;
+    }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    
+    res.json({ success: true, configurations });
+  } catch (error) {
+    Logger.error('获取配置列表失败', { error: error.message });
+    res.status(500).json({ success: false, message: '获取配置列表失败' });
+  }
+});
+
+// 保存新配置
+app.post('/api/configurations', (req, res) => {
+  try {
+    const { name, config, resources } = req.body;
+    
+    if (!name || !config) {
+      return res.status(400).json({ success: false, message: '配置名称和内容不能为空' });
+    }
+    
+    const configId = `config_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    const backupDir = path.join(__dirname, 'public', 'png', 'backup', name);
+    const backcardBackupDir = path.join(backupDir, 'backcard');
+    const endcardBackupDir = path.join(backupDir, 'endcard');
+    
+    // 创建备份目录
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
+    if (!fs.existsSync(backcardBackupDir)) {
+      fs.mkdirSync(backcardBackupDir, { recursive: true });
+    }
+    if (!fs.existsSync(endcardBackupDir)) {
+      fs.mkdirSync(endcardBackupDir, { recursive: true });
+    }
+    
+    // 复制backcard目录下的所有图片文件
+    const backcardSourceDir = path.join(__dirname, 'public', 'png', 'backcard');
+    if (fs.existsSync(backcardSourceDir)) {
+      const backcardFiles = fs.readdirSync(backcardSourceDir);
+      backcardFiles.forEach(file => {
+        const sourcePath = path.join(backcardSourceDir, file);
+        const destPath = path.join(backcardBackupDir, file);
+        if (fs.statSync(sourcePath).isFile()) {
+          fs.copyFileSync(sourcePath, destPath);
+        }
+      });
+    }
+    
+    // 复制endcard目录下的所有图片文件
+    const endcardSourceDir = path.join(__dirname, 'public', 'png', 'endcard');
+    if (fs.existsSync(endcardSourceDir)) {
+      const endcardFiles = fs.readdirSync(endcardSourceDir);
+      endcardFiles.forEach(file => {
+        const sourcePath = path.join(endcardSourceDir, file);
+        const destPath = path.join(endcardBackupDir, file);
+        if (fs.statSync(sourcePath).isFile()) {
+          fs.copyFileSync(sourcePath, destPath);
+        }
+      });
+    }
+    
+    const configData = {
+      id: configId,
+      name,
+      config,
+      resources,
+      createdAt: new Date().toISOString()
+    };
+    
+    const configPath = path.join(CONFIGURATIONS_DIR, `${configId}.json`);
+    fs.writeFileSync(configPath, JSON.stringify(configData, null, 2), 'utf8');
+    
+    Logger.info('配置归档成功', { name, id: configId });
+    res.json({ success: true, message: '配置归档成功', id: configId });
+  } catch (error) {
+    Logger.error('配置归档失败', { error: error.message });
+    res.status(500).json({ success: false, message: '配置归档失败' });
+  }
+});
+
+// 应用配置
+app.post('/api/configurations/:id/apply', (req, res) => {
+  try {
+    const { id } = req.params;
+    const configPath = path.join(CONFIGURATIONS_DIR, `${id}.json`);
+    
+    if (!fs.existsSync(configPath)) {
+      return res.status(404).json({ success: false, message: '配置不存在' });
+    }
+    
+    const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const { config, name } = configData;
+    
+    // 删除backcard目录下的所有图片文件
+    const backcardDir = path.join(__dirname, 'public', 'png', 'backcard');
+    if (fs.existsSync(backcardDir)) {
+      const backcardFiles = fs.readdirSync(backcardDir);
+      backcardFiles.forEach(file => {
+        const filePath = path.join(backcardDir, file);
+        if (fs.statSync(filePath).isFile()) {
+          fs.unlinkSync(filePath);
+        }
+      });
+    }
+    
+    // 删除endcard目录下的所有图片文件
+    const endcardDir = path.join(__dirname, 'public', 'png', 'endcard');
+    if (fs.existsSync(endcardDir)) {
+      const endcardFiles = fs.readdirSync(endcardDir);
+      endcardFiles.forEach(file => {
+        const filePath = path.join(endcardDir, file);
+        if (fs.statSync(filePath).isFile()) {
+          fs.unlinkSync(filePath);
+        }
+      });
+    }
+    
+    // 从backup目录复制图片回来
+    const backupDir = path.join(__dirname, 'public', 'png', 'backup', name);
+    const backcardBackupDir = path.join(backupDir, 'backcard');
+    const endcardBackupDir = path.join(backupDir, 'endcard');
+    
+    // 复制backcard图片
+    if (fs.existsSync(backcardBackupDir)) {
+      const backcardFiles = fs.readdirSync(backcardBackupDir);
+      backcardFiles.forEach(file => {
+        const sourcePath = path.join(backcardBackupDir, file);
+        const destPath = path.join(backcardDir, file);
+        if (fs.statSync(sourcePath).isFile()) {
+          fs.copyFileSync(sourcePath, destPath);
+        }
+      });
+    }
+    
+    // 复制endcard图片
+    if (fs.existsSync(endcardBackupDir)) {
+      const endcardFiles = fs.readdirSync(endcardBackupDir);
+      endcardFiles.forEach(file => {
+        const sourcePath = path.join(endcardBackupDir, file);
+        const destPath = path.join(endcardDir, file);
+        if (fs.statSync(sourcePath).isFile()) {
+          fs.copyFileSync(sourcePath, destPath);
+        }
+      });
+    }
+    
+    // 更新用户偏好设置
+    if (config) {
+      Object.assign(userPreferences, config);
+      // 保存到配置文件
+      writeConfig(userPreferences);
+      
+      // 更新游戏状态
+      if (config.defaultCardCount) {
+        gameState.cardCount = config.defaultCardCount;
+      }
+      
+      Logger.info('配置应用成功', { id: configData.id, name: configData.name });
+    }
+    
+    res.json({ success: true, message: '配置应用成功', config });
+  } catch (error) {
+    Logger.error('配置应用失败', { error: error.message });
+    res.status(500).json({ success: false, message: '配置应用失败' });
+  }
+});
+
+// 删除配置
+app.delete('/api/configurations/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { password } = req.body;
+    
+    // 验证口令
+    if (password !== '7879') {
+      return res.status(403).json({ success: false, message: '口令错误' });
+    }
+    
+    const configPath = path.join(CONFIGURATIONS_DIR, `${id}.json`);
+    
+    if (!fs.existsSync(configPath)) {
+      return res.status(404).json({ success: false, message: '配置不存在' });
+    }
+    
+    const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const { name } = configData;
+    
+    // 删除backup目录下的对应文件夹
+    const backupDir = path.join(__dirname, 'public', 'png', 'backup', name);
+    if (fs.existsSync(backupDir)) {
+      fs.rmSync(backupDir, { recursive: true, force: true });
+    }
+    
+    fs.unlinkSync(configPath);
+    Logger.info('配置删除成功', { id, name });
+    res.json({ success: true, message: '配置删除成功' });
+  } catch (error) {
+    Logger.error('配置删除失败', { error: error.message });
+    res.status(500).json({ success: false, message: '配置删除失败' });
+  }
+});
+
+// 获取通俗语配置
+app.get('/api/drink-texts', (req, res) => {
+  try {
+    const drinkTextConfig = userPreferences.drinkTextConfig || {
+      enabled: false,
+      texts: {
+        '1': '',
+        '2': '',
+        '3': '',
+        '4': '',
+        '5': '',
+        '6': '',
+        '7': '',
+        '8': '',
+        '9': '',
+        '10': '',
+        '>10': ''
+      }
+    };
+    
+    res.json({ 
+      success: true, 
+      enabled: drinkTextConfig.enabled, 
+      texts: drinkTextConfig.texts 
+    });
+  } catch (error) {
+    Logger.error('获取通俗语配置失败', { error: error.message });
+    res.status(500).json({ success: false, message: '获取通俗语配置失败' });
+  }
+});
+
+// 保存通俗语配置
+app.post('/api/drink-texts', (req, res) => {
+  try {
+    const { enabled, texts } = req.body;
+    
+    userPreferences.drinkTextConfig = {
+      enabled: Boolean(enabled),
+      texts: texts || {
+        '1': '',
+        '2': '',
+        '3': '',
+        '4': '',
+        '5': '',
+        '6': '',
+        '7': '',
+        '8': '',
+        '9': '',
+        '10': '',
+        '>10': ''
+      }
+    };
+    
+    // 保存到配置文件
+    writeConfig(userPreferences);
+    
+    Logger.info('通俗语配置保存成功', { enabled });
+    res.json({ success: true, message: '通俗语配置保存成功' });
+  } catch (error) {
+    Logger.error('保存通俗语配置失败', { error: error.message });
+    res.status(500).json({ success: false, message: '保存通俗语配置失败' });
   }
 });
 

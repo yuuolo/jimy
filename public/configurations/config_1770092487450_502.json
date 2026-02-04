@@ -1,0 +1,127 @@
+{
+  "id": "config_1770092487450_502",
+  "name": "壹城年会",
+  "config": {
+    "cardCount": 9,
+    "columns": 3,
+    "gameTitle": "壹城翻牌游戏",
+    "winMessages": [
+      "恭喜你找到境哥牌！",
+      "太棒了，你找到了！",
+      "运气真好，境哥牌被你找到了！",
+      "恭喜恭喜，你找到了境哥牌！",
+      "厉害了，境哥牌归你了！"
+    ],
+    "autoRestartSeconds": 15,
+    "drinkParameter": 2,
+    "firstCardDrinkCount": 3,
+    "lastCardDrinkCount": 2,
+    "turnTimeoutSeconds": 10,
+    "itemFlipCountThreshold": 5,
+    "reverseItemFlipCountThreshold": 2,
+    "backcardSelectionMode": "random",
+    "backcardSelectionCount": 9,
+    "selectedBackcards": [
+      "1770012539095-970628317.jpeg"
+    ]
+  },
+  "resources": {
+    "backcards": [
+      {
+        "filename": "1770009874047-496040601.jpeg",
+        "url": "/png/backcard/1770009874047-496040601.jpeg"
+      },
+      {
+        "filename": "1770009881741-191178306.jpeg",
+        "url": "/png/backcard/1770009881741-191178306.jpeg"
+      },
+      {
+        "filename": "1770009887837-319766894.jpeg",
+        "url": "/png/backcard/1770009887837-319766894.jpeg"
+      },
+      {
+        "filename": "1770012359391-621738599.jpeg",
+        "url": "/png/backcard/1770012359391-621738599.jpeg"
+      },
+      {
+        "filename": "1770012366055-185290358.jpeg",
+        "url": "/png/backcard/1770012366055-185290358.jpeg"
+      },
+      {
+        "filename": "1770012539095-970628317.jpeg",
+        "url": "/png/backcard/1770012539095-970628317.jpeg"
+      },
+      {
+        "filename": "106.jpg",
+        "url": "/png/backcard/106.jpg"
+      },
+      {
+        "filename": "107.jpg",
+        "url": "/png/backcard/107.jpg"
+      },
+      {
+        "filename": "1770009867589-566413960.jpeg",
+        "url": "/png/backcard/1770009867589-566413960.jpeg"
+      },
+      {
+        "filename": "100.jpg",
+        "url": "/png/backcard/100.jpg"
+      },
+      {
+        "filename": "101.jpg",
+        "url": "/png/backcard/101.jpg"
+      },
+      {
+        "filename": "102.jpg",
+        "url": "/png/backcard/102.jpg"
+      },
+      {
+        "filename": "103.jpg",
+        "url": "/png/backcard/103.jpg"
+      },
+      {
+        "filename": "104.jpg",
+        "url": "/png/backcard/104.jpg"
+      },
+      {
+        "filename": "105.jpg",
+        "url": "/png/backcard/105.jpg"
+      }
+    ],
+    "endcards": [
+      {
+        "filename": "1770018350007-386555936.jpeg",
+        "url": "/png/endcard/1770018350007-386555936.jpeg"
+      },
+      {
+        "filename": "1770018662023-494817488.jpeg",
+        "url": "/png/endcard/1770018662023-494817488.jpeg"
+      },
+      {
+        "filename": "1770018668931-54817117.jpeg",
+        "url": "/png/endcard/1770018668931-54817117.jpeg"
+      },
+      {
+        "filename": "201.jpg",
+        "url": "/png/endcard/201.jpg"
+      },
+      {
+        "filename": "202.jpg",
+        "url": "/png/endcard/202.jpg"
+      },
+      {
+        "filename": "203.jpg",
+        "url": "/png/endcard/203.jpg"
+      },
+      {
+        "filename": "205.jpg",
+        "url": "/png/endcard/205.jpg"
+      },
+      {
+        "filename": "206.jpg",
+        "url": "/png/endcard/206.jpg"
+      }
+    ]
+  },
+  "createdAt": "2026-02-03T04:21:27.465Z"
+}

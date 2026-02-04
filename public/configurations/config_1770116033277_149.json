@@ -1,0 +1,259 @@
+{
+  "id": "config_1770116033277_149",
+  "name": "壹城年会-酉酒吧",
+  "config": {
+    "cardCount": 9,
+    "columns": 3,
+    "gameTitle": "壹城翻牌游戏",
+    "winMessages": [
+      "恭喜你找到境哥牌！",
+      "太棒了，你找到了！",
+      "运气真好，境哥牌被你找到了！",
+      "恭喜恭喜，你找到了境哥牌！",
+      "厉害了，境哥牌归你了！"
+    ],
+    "autoRestartSeconds": 15,
+    "drinkParameter": 1,
+    "firstCardDrinkCount": 1,
+    "lastCardDrinkCount": 2,
+    "turnTimeoutSeconds": 10,
+    "itemFlipCountThreshold": 3,
+    "reverseItemFlipCountThreshold": 2,
+    "backcardSelectionMode": "random",
+    "backcardSelectionCount": 9,
+    "selectedBackcards": [
+      "1770012539095-970628317.jpeg"
+    ]
+  },
+  "resources": {
+    "backcards": [
+      {
+        "filename": "1770095423158-110970977.jpeg",
+        "url": "/png/backcard/1770095423158-110970977.jpeg"
+      },
+      {
+        "filename": "1770095423088-314431061.jpeg",
+        "url": "/png/backcard/1770095423088-314431061.jpeg"
+      },
+      {
+        "filename": "1770095423003-292200907.jpeg",
+        "url": "/png/backcard/1770095423003-292200907.jpeg"
+      },
+      {
+        "filename": "1770095371166-937526846.jpeg",
+        "url": "/png/backcard/1770095371166-937526846.jpeg"
+      },
+      {
+        "filename": "1770095371146-405898531.jpeg",
+        "url": "/png/backcard/1770095371146-405898531.jpeg"
+      },
+      {
+        "filename": "1770095371076-645834393.jpeg",
+        "url": "/png/backcard/1770095371076-645834393.jpeg"
+      },
+      {
+        "filename": "1770095371041-407830268.jpeg",
+        "url": "/png/backcard/1770095371041-407830268.jpeg"
+      },
+      {
+        "filename": "1770095371031-251661926.jpeg",
+        "url": "/png/backcard/1770095371031-251661926.jpeg"
+      },
+      {
+        "filename": "1770095370886-406351511.jpeg",
+        "url": "/png/backcard/1770095370886-406351511.jpeg"
+      },
+      {
+        "filename": "1770095356464-92883620.jpeg",
+        "url": "/png/backcard/1770095356464-92883620.jpeg"
+      },
+      {
+        "filename": "1770095356244-963720538.jpeg",
+        "url": "/png/backcard/1770095356244-963720538.jpeg"
+      },
+      {
+        "filename": "1770095356239-649745495.jpeg",
+        "url": "/png/backcard/1770095356239-649745495.jpeg"
+      },
+      {
+        "filename": "1770095356139-622792055.jpeg",
+        "url": "/png/backcard/1770095356139-622792055.jpeg"
+      },
+      {
+        "filename": "1770095356014-482660256.jpeg",
+        "url": "/png/backcard/1770095356014-482660256.jpeg"
+      },
+      {
+        "filename": "1770095355899-556712476.jpeg",
+        "url": "/png/backcard/1770095355899-556712476.jpeg"
+      },
+      {
+        "filename": "1770095342539-351911290.jpeg",
+        "url": "/png/backcard/1770095342539-351911290.jpeg"
+      },
+      {
+        "filename": "1770095342449-427222056.jpeg",
+        "url": "/png/backcard/1770095342449-427222056.jpeg"
+      },
+      {
+        "filename": "1770095342425-920338202.jpeg",
+        "url": "/png/backcard/1770095342425-920338202.jpeg"
+      },
+      {
+        "filename": "1770095342366-859438789.jpeg",
+        "url": "/png/backcard/1770095342366-859438789.jpeg"
+      },
+      {
+        "filename": "1770095342205-313049350.jpeg",
+        "url": "/png/backcard/1770095342205-313049350.jpeg"
+      },
+      {
+        "filename": "1770095341995-583352495.jpeg",
+        "url": "/png/backcard/1770095341995-583352495.jpeg"
+      },
+      {
+        "filename": "1770095331349-509910840.jpeg",
+        "url": "/png/backcard/1770095331349-509910840.jpeg"
+      },
+      {
+        "filename": "1770095331024-483554865.jpeg",
+        "url": "/png/backcard/1770095331024-483554865.jpeg"
+      },
+      {
+        "filename": "1770095330929-980460842.jpeg",
+        "url": "/png/backcard/1770095330929-980460842.jpeg"
+      },
+      {
+        "filename": "1770095330204-706871100.jpeg",
+        "url": "/png/backcard/1770095330204-706871100.jpeg"
+      },
+      {
+        "filename": "1770095314794-905032573.jpeg",
+        "url": "/png/backcard/1770095314794-905032573.jpeg"
+      },
+      {
+        "filename": "1770095314539-760786115.jpeg",
+        "url": "/png/backcard/1770095314539-760786115.jpeg"
+      },
+      {
+        "filename": "1770095314419-371351144.jpeg",
+        "url": "/png/backcard/1770095314419-371351144.jpeg"
+      },
+      {
+        "filename": "1770095314029-889450505.jpeg",
+        "url": "/png/backcard/1770095314029-889450505.jpeg"
+      },
+      {
+        "filename": "1770095313770-924319119.jpeg",
+        "url": "/png/backcard/1770095313770-924319119.jpeg"
+      },
+      {
+        "filename": "1770095295228-106973833.jpeg",
+        "url": "/png/backcard/1770095295228-106973833.jpeg"
+      },
+      {
+        "filename": "1770095295024-216476499.jpeg",
+        "url": "/png/backcard/1770095295024-216476499.jpeg"
+      },
+      {
+        "filename": "1770009874047-496040601.jpeg",
+        "url": "/png/backcard/1770009874047-496040601.jpeg"
+      },
+      {
+        "filename": "1770009881741-191178306.jpeg",
+        "url": "/png/backcard/1770009881741-191178306.jpeg"
+      },
+      {
+        "filename": "1770009887837-319766894.jpeg",
+        "url": "/png/backcard/1770009887837-319766894.jpeg"
+      },
+      {
+        "filename": "1770012359391-621738599.jpeg",
+        "url": "/png/backcard/1770012359391-621738599.jpeg"
+      },
+      {
+        "filename": "1770012366055-185290358.jpeg",
+        "url": "/png/backcard/1770012366055-185290358.jpeg"
+      },
+      {
+        "filename": "1770012539095-970628317.jpeg",
+        "url": "/png/backcard/1770012539095-970628317.jpeg"
+      },
+      {
+        "filename": "106.jpg",
+        "url": "/png/backcard/106.jpg"
+      },
+      {
+        "filename": "107.jpg",
+        "url": "/png/backcard/107.jpg"
+      },
+      {
+        "filename": "1770009867589-566413960.jpeg",
+        "url": "/png/backcard/1770009867589-566413960.jpeg"
+      },
+      {
+        "filename": "100.jpg",
+        "url": "/png/backcard/100.jpg"
+      },
+      {
+        "filename": "101.jpg",
+        "url": "/png/backcard/101.jpg"
+      },
+      {
+        "filename": "102.jpg",
+        "url": "/png/backcard/102.jpg"
+      },
+      {
+        "filename": "103.jpg",
+        "url": "/png/backcard/103.jpg"
+      },
+      {
+        "filename": "104.jpg",
+        "url": "/png/backcard/104.jpg"
+      },
+      {
+        "filename": "105.jpg",
+        "url": "/png/backcard/105.jpg"
+      }
+    ],
+    "endcards": [
+      {
+        "filename": "1770018350007-386555936.jpeg",
+        "url": "/png/endcard/1770018350007-386555936.jpeg"
+      },
+      {
+        "filename": "1770018662023-494817488.jpeg",
+        "url": "/png/endcard/1770018662023-494817488.jpeg"
+      },
+      {
+        "filename": "1770018668931-54817117.jpeg",
+        "url": "/png/endcard/1770018668931-54817117.jpeg"
+      },
+      {
+        "filename": "1770095020037-690681774.jpeg",
+        "url": "/png/endcard/1770095020037-690681774.jpeg"
+      },
+      {
+        "filename": "201.jpg",
+        "url": "/png/endcard/201.jpg"
+      },
+      {
+        "filename": "202.jpg",
+        "url": "/png/endcard/202.jpg"
+      },
+      {
+        "filename": "203.jpg",
+        "url": "/png/endcard/203.jpg"
+      },
+      {
+        "filename": "205.jpg",
+        "url": "/png/endcard/205.jpg"
+      },
+      {
+        "filename": "206.jpg",
+        "url": "/png/endcard/206.jpg"
+      }
+    ]
+  },
+  "createdAt": "2026-02-03T10:53:53.400Z"
+}
