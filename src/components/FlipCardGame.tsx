@@ -99,7 +99,26 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
   const [showGameIni, setShowGameIni] = useState(false);
   const [gameIniTimestamp, setGameIniTimestamp] = useState<number>(Date.now());
   const prevIsMyTurnRef = useRef(false);
-  const [drinkTextConfig, setDrinkTextConfig] = useState({
+  
+  interface DrinkTextConfig {
+    enabled: boolean;
+    texts: {
+      '1': string;
+      '2': string;
+      '3': string;
+      '4': string;
+      '5': string;
+      '6': string;
+      '7': string;
+      '8': string;
+      '9': string;
+      '10': string;
+      '>10': string;
+      [key: string]: string;
+    };
+  }
+  
+  const [drinkTextConfig, setDrinkTextConfig] = useState<DrinkTextConfig>({
     enabled: false,
     texts: {
       '1': '',
