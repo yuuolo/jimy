@@ -3139,11 +3139,6 @@ input:disabled {
     font-size: 16px;
   }
   
-  /* 隐藏退出队列按钮 - 手机端 */
-  .exit-queue-button {
-    display: none;
-  }
-  
   /* 隐藏当前位置的管理按钮 - 手机端 */
   .admin-button {
     display: none;
@@ -3498,5 +3493,84 @@ input:disabled {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* 技能提示消息样式 */
+.skill-message {
+  margin-top: 10px;
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: bold;
+  text-align: center;
+  animation: skillMessageSlideIn 0.3s ease-out;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  max-width: 300px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@keyframes skillMessageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 响应式布局 - 移动端 */
+@media (max-width: 768px) {
+  .skill-message {
+    font-size: 12px;
+    padding: 6px 12px;
+    max-width: 200px;
+  }
+}
+
+/* 被点名玩家闪烁效果 */
+.target-player {
+  animation: targetPlayerBlink 0.2s ease-in-out infinite alternate;
+}
+
+.target-player .queue-nickname {
+  font-weight: bold;
+  color: #ff6b6b;
+}
+
+/* 反转技能效果：所有玩家闪烁 */
+.reverse-effect {
+  animation: reverseEffectBlink 0.2s ease-in-out infinite alternate;
+}
+
+.reverse-effect .queue-nickname {
+  font-weight: bold;
+  color: #4ecdc4;
+}
+
+@keyframes targetPlayerBlink {
+  from {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+@keyframes reverseEffectBlink {
+  from {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1.2);
   }
 }

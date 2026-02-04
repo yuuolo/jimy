@@ -805,7 +805,11 @@ class PlayerQueue {
         // 检查是否需要更新当前回合玩家
         if (this.turnPlayer && this.turnPlayer.id === playerId) {
           this.nextTurn();
-          // 重置反转道具状态，使下个回合可以重新获得
+          // 重置道具状态，使下个回合可以重新获得
+          gameState.item.hasItem = false;
+          gameState.item.itemPlayerId = null;
+          gameState.item.itemUsed = false;
+          
           gameState.item.reverseItem.hasItem = false;
           gameState.item.reverseItem.itemPlayerId = null;
           gameState.item.reverseItem.itemUsed = false;
@@ -915,6 +919,48 @@ function initializeGame(cardCount) {
   io.emit('gameState', gameState);
 }
 
+// 检查技能获得的公共方法
+function checkSkillAward(skillType, threshold, flipCount, playerId, userPreferences, playerQueue, gameState, io, Logger) {
+  if (skillType === 'item' && flipCount === threshold && !gameState.item.hasItem) {
+    gameState.item.hasItem = true;
+    gameState.item.itemPlayerId = playerId;
+    gameState.item.itemUsed = false;
+    Logger.info('玩家获得点名道具', { 
+      playerId, 
+      nickname: playerQueue.turnPlayer?.nickname, 
+      flipCount, 
+      itemThreshold: threshold,
+      queuePosition: playerQueue.players.findIndex(p => p.id === playerId) + 1,
+      queueLength: playerQueue.players.length
+    });
+    io.emit('itemAwarded', { playerId, nickname: playerQueue.turnPlayer?.nickname });
+  } else if (skillType === 'reverseItem' && flipCount === threshold && !gameState.item.reverseItem.hasItem) {
+    gameState.item.reverseItem.hasItem = true;
+    gameState.item.reverseItem.itemPlayerId = playerId;
+    gameState.item.reverseItem.itemUsed = false;
+    Logger.info('玩家获得反转道具', { 
+      playerId, 
+      nickname: playerQueue.turnPlayer?.nickname, 
+      flipCount, 
+      reverseItemThreshold: threshold,
+      queuePosition: playerQueue.players.findIndex(p => p.id === playerId) + 1,
+      queueLength: playerQueue.players.length
+    });
+    io.emit('reverseItemAwarded', { playerId, nickname: playerQueue.turnPlayer?.nickname });
+  }
+}
+
+// 验证玩家数量的公共函数
+function validatePlayerCount(players, minCount, skillName, socket, Logger) {
+  if (players.length < minCount) {
+    const message = `队列中至少需要${minCount}名玩家才能使用${skillName}`;
+    Logger.warn(`${skillName} - 队列中玩家不足`, { playerCount: players.length, required: minCount });
+    socket.emit('error', { message });
+    return false;
+  }
+  return true;
+}
+
 // WebSocket连接处理
 io.on('connection', (socket) => {
   Logger.info('新用户连接', { socketId: socket.id });
@@ -1019,39 +1065,9 @@ io.on('connection', (socket) => {
     const flipCount = playerQueue.incrementFlipCount();
     Logger.info('玩家翻牌', { playerId, cardId, flipCount });
     
-    // 检查是否达到道具翻牌数阈值
-    const itemThreshold = userPreferences.itemFlipCountThreshold || 3;
-    if (flipCount === itemThreshold && !gameState.item.hasItem) {
-      gameState.item.hasItem = true;
-      gameState.item.itemPlayerId = playerId;
-      gameState.item.itemUsed = false;
-      Logger.info('玩家获得点名道具', { 
-        playerId, 
-        nickname: playerQueue.turnPlayer?.nickname, 
-        flipCount, 
-        itemThreshold,
-        queuePosition: playerQueue.players.findIndex(p => p.id === playerId) + 1,
-        queueLength: playerQueue.players.length
-      });
-      io.emit('itemAwarded', { playerId, nickname: playerQueue.turnPlayer?.nickname });
-    }
-    
-    // 检查是否达到反转道具翻牌数阈值
-    const reverseItemThreshold = userPreferences.reverseItemFlipCountThreshold || 2;
-    if (flipCount === reverseItemThreshold && !gameState.item.reverseItem.hasItem) {
-      gameState.item.reverseItem.hasItem = true;
-      gameState.item.reverseItem.itemPlayerId = playerId;
-      gameState.item.reverseItem.itemUsed = false;
-      Logger.info('玩家获得反转道具', { 
-        playerId, 
-        nickname: playerQueue.turnPlayer?.nickname, 
-        flipCount, 
-        reverseItemThreshold,
-        queuePosition: playerQueue.players.findIndex(p => p.id === playerId) + 1,
-        queueLength: playerQueue.players.length
-      });
-      io.emit('reverseItemAwarded', { playerId, nickname: playerQueue.turnPlayer?.nickname });
-    }
+    // 检查技能获得
+    checkSkillAward('item', userPreferences.itemFlipCountThreshold || 3, flipCount, playerId, userPreferences, playerQueue, gameState, io, Logger);
+    checkSkillAward('reverseItem', userPreferences.reverseItemFlipCountThreshold || 2, flipCount, playerId, userPreferences, playerQueue, gameState, io, Logger);
     
     // 重置倒计时
     if (playerQueue.turnTimer) {
@@ -1157,7 +1173,11 @@ io.on('connection', (socket) => {
     // 结束回合，移到队尾
     playerQueue.nextTurn();
     
-    // 重置反转道具状态，使下个回合可以重新获得
+    // 重置道具状态，使下个回合可以重新获得
+    gameState.item.hasItem = false;
+    gameState.item.itemPlayerId = null;
+    gameState.item.itemUsed = false;
+    
     gameState.item.reverseItem.hasItem = false;
     gameState.item.reverseItem.itemPlayerId = null;
     gameState.item.reverseItem.itemUsed = false;
@@ -1206,9 +1226,7 @@ io.on('connection', (socket) => {
     
     // 检查队列中是否至少有3名玩家
     const players = playerQueue.players;
-    if (players.length < 3) {
-      Logger.warn('队列中玩家不足3人，无法使用点名道具', { playerId, playerCount: players.length });
-      socket.emit('error', { message: '队列中至少需要3名玩家才能使用点名道具' });
+    if (!validatePlayerCount(players, 3, '点名道具', socket, Logger)) {
       return;
     }
     
@@ -1264,6 +1282,12 @@ io.on('connection', (socket) => {
     if (gameState.item.reverseItem.itemUsed) {
       Logger.warn('反转道具已使用', { playerId });
       socket.emit('error', { message: '反转道具已使用' });
+      return;
+    }
+    
+    // 检查队列中是否至少有3名玩家
+    const players = playerQueue.players;
+    if (!validatePlayerCount(players, 3, '反转道具', socket, Logger)) {
       return;
     }
     
@@ -1481,7 +1505,11 @@ io.on('connection', (socket) => {
         // 结束回合，移到队尾
         playerQueue.nextTurn();
         
-        // 重置反转道具状态，使下个回合可以重新获得
+        // 重置道具状态，使下个回合可以重新获得
+        gameState.item.hasItem = false;
+        gameState.item.itemPlayerId = null;
+        gameState.item.itemUsed = false;
+        
         gameState.item.reverseItem.hasItem = false;
         gameState.item.reverseItem.itemPlayerId = null;
         gameState.item.reverseItem.itemUsed = false;

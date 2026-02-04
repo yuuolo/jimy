@@ -105,6 +105,9 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
   const [isSelectingPlayer, setIsSelectingPlayer] = useState(false);
   const [showGameIni, setShowGameIni] = useState(false);
   const [gameIniTimestamp, setGameIniTimestamp] = useState<number>(Date.now());
+  const [skillMessage, setSkillMessage] = useState<string | null>(null);
+  const [targetPlayerId, setTargetPlayerId] = useState<string | null>(null);
+  const [isReverseEffectActive, setIsReverseEffectActive] = useState(false);
   const prevIsMyTurnRef = useRef(false);
   
   interface DrinkTextConfig {
@@ -601,21 +604,55 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
 
     const handleItemObtained = (data: any) => {
       console.log('获得道具:', data);
-      speakText('恭喜获得道具！');
+      speakText('恭喜获得指定道具！');
+      setSkillMessage('恭喜获得指定道具！');
+      setTimeout(() => {
+        setSkillMessage(null);
+      }, 2000);
     };
 
     const handleItemUsed = (data: any) => {
       console.log('道具已使用:', data);
       setIsSelectingPlayer(false);
+      // 设置被点名的玩家ID，用于闪烁效果
+      if (data.targetPlayerId) {
+        setTargetPlayerId(data.targetPlayerId);
+        // 1秒后清除闪烁效果
+        setTimeout(() => {
+          setTargetPlayerId(null);
+        }, 1000);
+      }
+      // 显示点名技能使用提示
+      setSkillMessage('指定技能使用成功！');
+      // 2秒后清除提示
+      setTimeout(() => {
+        setSkillMessage(null);
+      }, 2000);
     };
 
     const handleReverseItemAwarded = (data: any) => {
       console.log('获得反转道具:', data);
       speakText('恭喜获得反转道具！');
+      setSkillMessage('恭喜获得反转道具！');
+      setTimeout(() => {
+        setSkillMessage(null);
+      }, 2000);
     };
 
     const handleReverseItemUsed = (data: any) => {
       console.log('反转道具已使用:', data);
+      // 激活反转效果，使所有玩家闪烁
+      setIsReverseEffectActive(true);
+      // 1秒后清除闪烁效果
+      setTimeout(() => {
+        setIsReverseEffectActive(false);
+      }, 1000);
+      // 显示反转技能使用提示
+      setSkillMessage('反转技能使用成功！');
+      // 2秒后清除提示
+      setTimeout(() => {
+        setSkillMessage(null);
+      }, 2000);
     };
 
     const handleTurnStarted = (data: any) => {
@@ -632,7 +669,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
     socket.on('error', handleError);
     socket.on('jingCardClick', handleJingCardClick);
     socket.on('jingCardAudio', handleJingCardAudio);
-    socket.on('itemObtained', handleItemObtained);
+    socket.on('itemAwarded', handleItemObtained);
     socket.on('itemUsed', handleItemUsed);
     socket.on('reverseItemAwarded', handleReverseItemAwarded);
     socket.on('reverseItemUsed', handleReverseItemUsed);
@@ -648,7 +685,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       socket.off('error', handleError);
       socket.off('jingCardClick', handleJingCardClick);
       socket.off('jingCardAudio', handleJingCardAudio);
-      socket.off('itemObtained', handleItemObtained);
+      socket.off('itemAwarded', handleItemObtained);
       socket.off('itemUsed', handleItemUsed);
       socket.off('reverseItemAwarded', handleReverseItemAwarded);
       socket.off('reverseItemUsed', handleReverseItemUsed);
@@ -829,6 +866,11 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
                   结束回合
                 </button>
               )}
+              {skillMessage && (
+                <div className="skill-message">
+                  {skillMessage}
+                </div>
+              )}
             </div>
           ) : (
             <div className="waiting-message">
@@ -967,7 +1009,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
             {gameState.queueState.players.slice(0, 10).map((player: Player, index: number) => (
               <div 
                 key={player.id} 
-                className={`queue-item ${player.isTurn ? 'current-turn' : ''} ${!player.isActive ? 'inactive' : ''} ${isSelectingPlayer && player.id !== user.id ? 'selectable' : ''}`}
+                className={`queue-item ${player.isTurn ? 'current-turn' : ''} ${!player.isActive ? 'inactive' : ''} ${isSelectingPlayer && player.id !== user.id ? 'selectable' : ''} ${targetPlayerId === player.id ? 'target-player' : ''} ${isReverseEffectActive ? 'reverse-effect' : ''}`}
                 onClick={() => {
                   if (isSelectingPlayer && player.id !== user.id && socket) {
                     socket.emit('useItem', { playerId: user.id, targetPlayerId: player.id });
