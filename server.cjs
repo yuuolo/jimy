@@ -163,21 +163,15 @@ function writeConfig(config) {
   }
 }
 
-// 存储用户偏好设置
-let userPreferences = readConfig() || {
+// 默认配置
+const defaultPreferences = {
   defaultCardCount: 9,
   defaultColumns: 3,
-  gameTitle: '壹城翻牌游戏',
+  gameTitle: '',
   timeoutMinutes: 3,
   itemFlipCountThreshold: 3,
   reverseItemFlipCountThreshold: 2,
-  winMessages: [
-    '恭喜你找到境哥牌！',
-    '太棒了，你找到了！',
-    '运气真好，境哥牌被你找到了！',
-    '恭喜恭喜，你找到了境哥牌！',
-    '厉害了，境哥牌归你了！'
-  ],
+
   drinkTextConfig: {
     enabled: false,
     texts: {
@@ -193,8 +187,37 @@ let userPreferences = readConfig() || {
       '10': '',
       '>10': ''
     }
+  },
+  // 口头禅文本配置
+ 口头禅TextConfig: {
+    enabled: true,
+    texts: [
+      '勇敢的心！',
+      '再来一杯！',
+      '干了这杯！',
+      '好酒！',
+      '喝起来！'
+    ]
+  },
+  // 显示控制选项
+  displayConfig: {
+    showFlipCount: true,
+    showDrinkCount: true,
+    showCountdownToggle: true,
+    showCountdownText: true,
+    showTurnImage: false,
+    turnImageUrl: ''
   }
 };
+
+// 存储用户偏好设置 - 优先使用 config.json 文件中的配置，缺失字段使用默认值
+const configData = readConfig() || {};
+let userPreferences = {
+  ...defaultPreferences,
+  ...configData
+};
+
+
 
 // 配置归档管理
 const CONFIGURATIONS_DIR = path.join(__dirname, 'public', 'configurations');
@@ -345,6 +368,36 @@ const uploadEndcard = multer({
   }
 });
 
+// 配置multer用于回合图片上传
+const turnImageStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const turnImageDir = path.join(__dirname, 'public', 'png', 'turn-image');
+    // 确保目录存在
+    if (!fs.existsSync(turnImageDir)) {
+      fs.mkdirSync(turnImageDir, { recursive: true });
+    }
+    cb(null, turnImageDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const uploadTurnImage = multer({
+  storage: turnImageStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB限制
+  },
+  fileFilter: function (req, file, cb) {
+    // 只接受图片文件
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new Error('只接受图片文件'), false);
+    }
+    cb(null, true);
+  }
+});
+
 // 简单的健康检查接口
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: '服务器运行正常' });
@@ -361,7 +414,6 @@ app.post('/api/preferences', (req, res) => {
     defaultCardCount, 
     defaultColumns, 
     gameTitle, 
-    winMessages, 
     autoRestartSeconds, 
     drinkParameter, 
     firstCardDrinkCount, 
@@ -371,7 +423,9 @@ app.post('/api/preferences', (req, res) => {
     reverseItemFlipCountThreshold,
     backcardSelectionMode,
     backcardSelectionCount,
-    selectedBackcards
+    selectedBackcards,
+    displayConfig,
+    口头禅TextConfig
   } = req.body;
   let updated = false;
   
@@ -397,12 +451,7 @@ app.post('/api/preferences', (req, res) => {
     updated = true;
   }
   
-  // 更新获胜文字列表
-  if (winMessages && Array.isArray(winMessages) && winMessages.length > 0) {
-    userPreferences.winMessages = winMessages;
-    Logger.info('获胜文字列表已更新', { winMessages });
-    updated = true;
-  }
+
   
   // 更新自动重启时间
   if (autoRestartSeconds && typeof autoRestartSeconds === 'number' && autoRestartSeconds >= 5 && autoRestartSeconds <= 60) {
@@ -471,6 +520,26 @@ app.post('/api/preferences', (req, res) => {
   if (selectedBackcards && Array.isArray(selectedBackcards)) {
     userPreferences.selectedBackcards = selectedBackcards;
     Logger.info('固定背景牌列表已更新', { selectedBackcards });
+    updated = true;
+  }
+  
+  // 更新显示配置
+  if (displayConfig && typeof displayConfig === 'object') {
+    userPreferences.displayConfig = {
+      ...userPreferences.displayConfig,
+      ...displayConfig
+    };
+    Logger.info('显示配置已更新', { displayConfig });
+    updated = true;
+  }
+  
+  // 更新口头禅文本配置
+  if (口头禅TextConfig && typeof 口头禅TextConfig === 'object') {
+    userPreferences.口头禅TextConfig = {
+      ...userPreferences.口头禅TextConfig,
+      ...口头禅TextConfig
+    };
+    Logger.info('口头禅文本配置已更新', { 口头禅TextConfig });
     updated = true;
   }
   
@@ -1040,11 +1109,7 @@ io.on('connection', (socket) => {
             }
           }
           
-          if (userPreferences.winMessages && userPreferences.winMessages.length > 0) {
-            const randomIndex = Math.floor(Math.random() * userPreferences.winMessages.length);
-            gameState.winMessage = userPreferences.winMessages[randomIndex];
-            Logger.info('随机选择获胜文字', { winMessage: gameState.winMessage });
-          }
+
           
           Logger.info('境哥牌被找到，游戏结束', { socketId: socket.id, cardId, winner: playerQueue.turnPlayer, drinkCount });
           
@@ -1136,6 +1201,14 @@ io.on('connection', (socket) => {
     if (gameState.item.itemUsed) {
       Logger.warn('道具已使用', { playerId });
       socket.emit('error', { message: '道具已使用' });
+      return;
+    }
+    
+    // 检查队列中是否至少有3名玩家
+    const players = playerQueue.players;
+    if (players.length < 3) {
+      Logger.warn('队列中玩家不足3人，无法使用点名道具', { playerId, playerCount: players.length });
+      socket.emit('error', { message: '队列中至少需要3名玩家才能使用点名道具' });
       return;
     }
     
@@ -1568,6 +1641,34 @@ app.post('/api/upload-endcard', uploadEndcard.array('endcards', 10), (req, res) 
     });
   } catch (error) {
     Logger.error('境哥牌上传失败', { error: error.message });
+    res.status(500).json({ success: false, message: error.message || '上传失败' });
+  }
+});
+
+// 上传回合图片
+app.post('/api/upload-turn-image', uploadTurnImage.single('turnImage'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: '没有上传文件' });
+    }
+    
+    const file = req.file;
+    const imageUrl = `/png/turn-image/${file.filename}`;
+    
+    Logger.info('回合图片上传成功', { 
+      filename: file.filename,
+      size: file.size,
+      mimetype: file.mimetype,
+      imageUrl: imageUrl
+    });
+    
+    res.json({ 
+      success: true, 
+      message: '回合图片上传成功',
+      imageUrl: imageUrl
+    });
+  } catch (error) {
+    Logger.error('回合图片上传失败', { error: error.message });
     res.status(500).json({ success: false, message: error.message || '上传失败' });
   }
 });

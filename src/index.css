@@ -868,8 +868,41 @@ button:focus-visible {
   }
 }
 
+/* PC专用样式 */
+.pc-only {
+  display: block;
+}
+
+/* 回合图片样式 */
+.turn-image {
+  margin-top: 10px;
+}
+
+.turn-image img {
+  max-width: calc(33.333vw - 20px);
+  max-height: 120px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
+  /* 在移动端隐藏PC专用元素 */
+  .pc-only {
+    display: none;
+  }
+  
+  /* 回合图片样式 */
+  .turn-image {
+    margin-top: 10px;
+  }
+  
+  .turn-image img {
+    max-width: calc(33.333vw - 20px);
+    max-height: 100px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
   .drink-art-text {
     font-size: 56px;
     margin: 16px 0 0 0;
@@ -3440,5 +3473,30 @@ input:disabled {
   
   .winner-message p:last-child {
     font-size: 16px;
+  }
+}
+
+/* 口头禅文本样式 */
+.口头禅-text {
+  font-size: 1.5rem;
+  font-weight: bold;
+  font-family: 'PingFang SC', 'Helvetica Neue', Arial, 'Hiragino Sans GB', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+  background: linear-gradient(135deg, #4ecdc4, #45b7d1);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  margin-bottom: 1rem;
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

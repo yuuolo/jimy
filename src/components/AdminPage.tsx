@@ -27,17 +27,9 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
   const [players, setPlayers] = useState<Player[]>([]);
   const [timeoutMinutes, setTimeoutMinutes] = useState(3);
   const [turnTimeoutSeconds, setTurnTimeoutSeconds] = useState(propTurnTimeoutSeconds || 30);
-  const [gameTitle, setGameTitle] = useState('壹城翻牌游戏');
+  const [gameTitle, setGameTitle] = useState('');
   const [cardCount, setCardCount] = useState(9);
   const [columns, setColumns] = useState(3);
-  const [winMessages, setWinMessages] = useState<string[]>([
-    '恭喜你找到境哥牌！',
-    '太棒了，你找到了！',
-    '运气真好，境哥牌被你找到了！',
-    '恭喜恭喜，你找到了境哥牌！',
-    '厉害了，境哥牌归你了！'
-  ]);
-  const [newWinMessage, setNewWinMessage] = useState('');
   const [autoRestartSeconds, setAutoRestartSeconds] = useState(propAutoRestartSeconds || 10);
   const [drinkParameter, setDrinkParameter] = useState(propDrinkParameter);
   const [firstCardDrinkCount, setFirstCardDrinkCount] = useState(propFirstCardDrinkCount);
@@ -90,6 +82,33 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
   });
   const [drinkTextMessage, setDrinkTextMessage] = useState('');
   
+  // 显示配置管理
+  const [displayConfig, setDisplayConfig] = useState({
+    showFlipCount: true,
+    showDrinkCount: true,
+    showCountdownToggle: true,
+    showCountdownText: true,
+    showTurnImage: false,
+    turnImageUrl: ''
+  });
+  
+  // 回合图片上传
+  const [turnImageFile, setTurnImageFile] = useState<File | null>(null);
+  const [uploadingTurnImage, setUploadingTurnImage] = useState(false);
+  const [turnImageMessage, setTurnImageMessage] = useState('');
+  
+  // 口头禅文本管理
+  const [口头禅TextEnabled, set口头禅TextEnabled] = useState(true);
+  const [口头禅Texts, set口头禅Texts] = useState<string[]>([
+    '勇敢的心！',
+    '再来一杯！',
+    '干了这杯！',
+    '好酒！',
+    '喝起来！'
+  ]);
+  const [口头禅TextMessage, set口头禅TextMessage] = useState('');
+  const [new口头禅Text, setNew口头禅Text] = useState('');
+  
   const isInitialized = useRef(false);
 
   // 加载保存的偏好设置
@@ -109,6 +128,17 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
         }
         if (data.selectedBackcards) {
           setSelectedBackcards(data.selectedBackcards);
+        }
+        
+        // 加载显示配置
+        if (data.displayConfig) {
+          setDisplayConfig(data.displayConfig);
+        }
+        
+        // 加载口头禅文本配置
+        if (data.口头禅TextConfig) {
+          set口头禅TextEnabled(data.口头禅TextConfig.enabled || false);
+          set口头禅Texts(data.口头禅TextConfig.texts || []);
         }
         
         isInitialized.current = true;
@@ -284,6 +314,8 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
     }
   }, [reverseItemFlipCountThreshold, isAuthenticated]);
 
+
+
   // 自动保存背景牌选择模式
   useEffect(() => {
     if (isInitialized.current && isAuthenticated) {
@@ -352,6 +384,29 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
       });
     }
   }, [selectedBackcards, isAuthenticated]);
+
+  // 自动保存显示配置
+  useEffect(() => {
+    if (isInitialized.current && isAuthenticated) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      fetch(`${apiUrl}/api/preferences`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ displayConfig })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) {
+          console.error('显示配置更新失败:', data.message);
+        }
+      })
+      .catch(error => {
+        console.error('更新显示配置失败:', error);
+      });
+    }
+  }, [displayConfig, isAuthenticated]);
 
   // 获取背景牌列表
   useEffect(() => {
@@ -490,28 +545,7 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
     }
   }, [columns, isAuthenticated]);
 
-  // 自动保存获胜文字列表
-  useEffect(() => {
-    if (isInitialized.current && isAuthenticated && winMessages.length > 0) {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
-      fetch(`${apiUrl}/api/preferences`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ winMessages })
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (!data.success) {
-          console.error('获胜文字列表更新失败:', data.message);
-        }
-      })
-      .catch(error => {
-        console.error('更新获胜文字列表失败:', error);
-      });
-    }
-  }, [winMessages, isAuthenticated]);
+
 
   // 处理密码验证
   const handleLogin = (e: React.FormEvent) => {
@@ -577,10 +611,7 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
       });
 
       // 监听用户偏好设置更新
-      socket.on('preferencesUpdated', (data: any) => {
-        if (data.winMessages && Array.isArray(data.winMessages)) {
-          setWinMessages(data.winMessages);
-        }
+      socket.on('preferencesUpdated', () => {
       });
 
       // 从服务器获取配置
@@ -597,9 +628,7 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
           if (data.defaultColumns) {
             setColumns(data.defaultColumns);
           }
-          if (data.winMessages && Array.isArray(data.winMessages)) {
-            setWinMessages(data.winMessages);
-          }
+
           if (data.autoRestartSeconds && typeof data.autoRestartSeconds === 'number') {
             setAutoRestartSeconds(data.autoRestartSeconds);
           }
@@ -628,18 +657,7 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
     };
   }, [isAuthenticated, socket]);
 
-  // 处理添加获胜文字
-  const handleAddWinMessage = () => {
-    if (newWinMessage.trim().length > 0) {
-      setWinMessages([...winMessages, newWinMessage.trim()]);
-      setNewWinMessage('');
-    }
-  };
 
-  // 处理删除获胜文字
-  const handleDeleteWinMessage = (index: number) => {
-    setWinMessages(winMessages.filter((_, i) => i !== index));
-  };
 
   // 处理游戏说明图片上传
   const handleGameIniUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -966,7 +984,6 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
             cardCount,
             columns,
             gameTitle,
-            winMessages,
             autoRestartSeconds,
             drinkParameter,
             firstCardDrinkCount,
@@ -976,7 +993,10 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
             reverseItemFlipCountThreshold,
             backcardSelectionMode,
             backcardSelectionCount,
-            selectedBackcards
+            selectedBackcards,
+            displayConfig,
+            drinkTextEnabled,
+            drinkTexts
           },
           resources: {
             backcards: backcards,
@@ -1027,14 +1047,7 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
         if (config) {
           setCardCount(config.cardCount || 9);
           setColumns(config.columns || 3);
-          setGameTitle(config.gameTitle || '壹城翻牌游戏');
-          setWinMessages(config.winMessages || [
-            '恭喜你找到境哥牌！',
-            '太棒了，你找到了！',
-            '运气真好，境哥牌被你找到了！',
-            '恭喜恭喜，你找到了境哥牌！',
-            '厉害了，境哥牌归你了！'
-          ]);
+          setGameTitle(config.gameTitle || '扫码加入游戏');
           setAutoRestartSeconds(config.autoRestartSeconds || 10);
           setDrinkParameter(config.drinkParameter || 1);
           setFirstCardDrinkCount(config.firstCardDrinkCount || 1);
@@ -1045,6 +1058,28 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
           setBackcardSelectionMode(config.backcardSelectionMode || 'random');
           setBackcardSelectionCount(config.backcardSelectionCount || 3);
           setSelectedBackcards(config.selectedBackcards || []);
+          setDisplayConfig(config.displayConfig || {
+            showFlipCount: true,
+            showDrinkCount: true,
+            showCountdownToggle: true,
+            showCountdownText: true,
+            showTurnImage: false,
+            turnImageUrl: ''
+          });
+          setDrinkTextEnabled(config.drinkTextEnabled || false);
+          setDrinkTexts(config.drinkTexts || {
+            '1': '',
+            '2': '',
+            '3': '',
+            '4': '',
+            '5': '',
+            '6': '',
+            '7': '',
+            '8': '',
+            '9': '',
+            '10': '',
+            '>10': ''
+          });
         }
         // 重新加载资源列表
         await Promise.all([
@@ -1158,6 +1193,72 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
     } catch (error) {
       console.error('保存通俗语配置失败:', error);
       setDrinkTextMessage('保存失败，请重试');
+    }
+  };
+
+  // 保存口头禅文本配置
+  const save口头禅Texts = async () => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      const response = await fetch(`${apiUrl}/api/preferences`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          口头禅TextConfig: {
+            enabled: 口头禅TextEnabled,
+            texts: 口头禅Texts
+          }
+        })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        set口头禅TextMessage('保存成功！');
+      } else {
+        set口头禅TextMessage(data.message || '保存失败');
+      }
+    } catch (error) {
+      console.error('保存口头禅文本配置失败:', error);
+      set口头禅TextMessage('保存失败，请重试');
+    }
+  };
+
+  // 处理回合图片上传
+  const handleTurnImageUpload = async () => {
+    if (!turnImageFile) {
+      setTurnImageMessage('请选择要上传的图片');
+      return;
+    }
+
+    setUploadingTurnImage(true);
+    setTurnImageMessage('');
+
+    const formData = new FormData();
+    formData.append('turnImage', turnImageFile);
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+      const response = await fetch(`${apiUrl}/api/upload-turn-image`, {
+        method: 'POST',
+        body: formData
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setDisplayConfig({ ...displayConfig, turnImageUrl: data.imageUrl });
+        setTurnImageFile(null);
+        setTurnImageMessage('图片上传成功！');
+      } else {
+        setTurnImageMessage(data.message || '上传失败');
+      }
+    } catch (error) {
+      console.error('上传回合图片失败:', error);
+      setTurnImageMessage('上传失败，请重试');
+    } finally {
+      setUploadingTurnImage(false);
     }
   };
 
@@ -1615,6 +1716,118 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
       </div>
 
       <div className="admin-section">
+        <h3>显示配置设置</h3>
+        <div className="display-config-setting">
+          {/* 翻牌计数显示开关 */}
+          <div className="display-toggle">
+            <label htmlFor="show-flip-count">翻牌计数：</label>
+            <div className="toggle-switch">
+              <input
+                type="checkbox"
+                id="show-flip-count"
+                checked={displayConfig.showFlipCount}
+                onChange={(e) => setDisplayConfig({ ...displayConfig, showFlipCount: e.target.checked })}
+              />
+              <span className="toggle-label"></span>
+            </div>
+          </div>
+          
+          {/* 酒量计数显示开关 */}
+          <div className="display-toggle">
+            <label htmlFor="show-drink-count">酒量计数：</label>
+            <div className="toggle-switch">
+              <input
+                type="checkbox"
+                id="show-drink-count"
+                checked={displayConfig.showDrinkCount}
+                onChange={(e) => setDisplayConfig({ ...displayConfig, showDrinkCount: e.target.checked })}
+              />
+              <span className="toggle-label"></span>
+            </div>
+          </div>
+          
+          {/* 倒计时开关显示开关 */}
+          <div className="display-toggle">
+            <label htmlFor="show-countdown-toggle">倒计时开关：</label>
+            <div className="toggle-switch">
+              <input
+                type="checkbox"
+                id="show-countdown-toggle"
+                checked={displayConfig.showCountdownToggle}
+                onChange={(e) => setDisplayConfig({ ...displayConfig, showCountdownToggle: e.target.checked })}
+              />
+              <span className="toggle-label"></span>
+            </div>
+          </div>
+          
+          {/* 倒计时文本显示开关 */}
+          <div className="display-toggle">
+            <label htmlFor="show-countdown-text">倒计时文本：</label>
+            <div className="toggle-switch">
+              <input
+                type="checkbox"
+                id="show-countdown-text"
+                checked={displayConfig.showCountdownText}
+                onChange={(e) => setDisplayConfig({ ...displayConfig, showCountdownText: e.target.checked })}
+              />
+              <span className="toggle-label"></span>
+            </div>
+          </div>
+          
+          {/* 回合图片显示开关 */}
+          <div className="display-toggle">
+            <label htmlFor="show-turn-image">回合图片：</label>
+            <div className="toggle-switch">
+              <input
+                type="checkbox"
+                id="show-turn-image"
+                checked={displayConfig.showTurnImage}
+                onChange={(e) => setDisplayConfig({ ...displayConfig, showTurnImage: e.target.checked })}
+              />
+              <span className="toggle-label"></span>
+            </div>
+          </div>
+          
+          {/* 回合图片上传 */}
+          {displayConfig.showTurnImage && (
+            <div className="turn-image-upload">
+              <label htmlFor="turn-image">上传回合图片：</label>
+              <div className="file-upload-control">
+                <input
+                  type="file"
+                  id="turn-image"
+                  accept="image/*"
+                  onChange={(e) => setTurnImageFile(e.target.files?.[0] || null)}
+                  className="file-input"
+                />
+                <button
+                  className="upload-button"
+                  onClick={handleTurnImageUpload}
+                  disabled={!turnImageFile || uploadingTurnImage}
+                >
+                  {uploadingTurnImage ? '上传中...' : '上传'}
+                </button>
+              </div>
+              {turnImageMessage && (
+                <div className="upload-message">{turnImageMessage}</div>
+              )}
+              {displayConfig.turnImageUrl && (
+                <div className="image-preview">
+                  <img src={displayConfig.turnImageUrl} alt="回合图片预览" className="preview-image" />
+                  <button
+                    className="delete-button"
+                    onClick={() => setDisplayConfig({ ...displayConfig, turnImageUrl: '' })}
+                  >
+                    删除图片
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="admin-section">
         <h3>牌数设置</h3>
         <div className="card-count-setting">
           <label htmlFor="card-count">牌数：{cardCount}</label>
@@ -1651,40 +1864,7 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
         </div>
       </div>
 
-      <div className="admin-section">
-        <h3>获胜文字设置</h3>
-        <div className="win-messages-setting">
-          <div className="win-messages-list">
-            {winMessages.map((message, index) => (
-              <div key={index} className="win-message-item">
-                <span className="win-message-text">{message}</span>
-                <button
-                  className="delete-button"
-                  onClick={() => handleDeleteWinMessage(index)}
-                >
-                  删除
-                </button>
-              </div>
-            ))}
-          </div>
-          <div className="win-message-add">
-            <input
-              type="text"
-              value={newWinMessage}
-              onChange={(e) => setNewWinMessage(e.target.value)}
-              placeholder="输入新的获胜文字"
-              className="win-message-input"
-              onKeyPress={(e) => e.key === 'Enter' && handleAddWinMessage()}
-            />
-            <button
-              className="add-button"
-              onClick={handleAddWinMessage}
-            >
-              添加
-            </button>
-          </div>
-        </div>
-      </div>
+
 
       <div className="admin-section">
         <h3>玩家管理</h3>
@@ -1836,6 +2016,87 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
           {drinkTextMessage && (
             <div className={`drink-text-message ${drinkTextMessage.includes('成功') ? 'success' : 'error'}`}>
               {drinkTextMessage}
+            </div>
+          )}
+        </div>
+      </div>
+      
+      {/* 口头禅文本管理 */}
+      <div className="admin-section">
+        <h3>口头禅文本管理</h3>
+        
+        <div className="口头禅-text-management">
+          <div className="口头禅-text-toggle">
+            <label>
+              <input
+                type="checkbox"
+                checked={口头禅TextEnabled}
+                onChange={(e) => set口头禅TextEnabled(e.target.checked)}
+              />
+              启用口头禅文本
+            </label>
+          </div>
+          
+          <div className="口头禅-text-form">
+            <div className="口头禅-text-list">
+              {口头禅Texts.map((text, index) => (
+                <div key={index} className="口头禅-text-item">
+                  <input
+                    type="text"
+                    value={text}
+                    onChange={(e) => {
+                      const newTexts = [...口头禅Texts];
+                      newTexts[index] = e.target.value;
+                      set口头禅Texts(newTexts);
+                    }}
+                    placeholder="输入口头禅文本"
+                  />
+                  <button 
+                    onClick={() => {
+                      const newTexts = [...口头禅Texts];
+                      newTexts.splice(index, 1);
+                      set口头禅Texts(newTexts);
+                    }}
+                    className="delete-button"
+                  >
+                    删除
+                  </button>
+                </div>
+              ))}
+            </div>
+            
+            <div className="口头禅-text-add">
+              <input
+                type="text"
+                value={new口头禅Text}
+                onChange={(e) => setNew口头禅Text(e.target.value)}
+                placeholder="输入新的口头禅文本"
+                className="口头禅-text-input"
+              />
+              <button 
+                onClick={() => {
+                  if (new口头禅Text.trim()) {
+                    set口头禅Texts([...口头禅Texts, new口头禅Text.trim()]);
+                    setNew口头禅Text('');
+                  }
+                }}
+                className="add-button"
+              >
+                添加
+              </button>
+            </div>
+          </div>
+          
+          <button 
+            onClick={save口头禅Texts}
+            className="save-口头禅-texts-button"
+          >
+            保存口头禅文本配置
+          </button>
+          
+          {口头禅TextMessage && (
+            <div className={`口头禅-text-message ${口头禅TextMessage.includes('成功') ? 'success' : 'error'}`}>
+              {口头禅TextMessage}
             </div>
           )}
         </div>

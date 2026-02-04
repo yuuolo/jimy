@@ -32,7 +32,7 @@ function App() {
   // 游戏状态
   const [selectedCardCount, setSelectedCardCount] = useState(9);
   const [columns, setColumns] = useState(3);
-  const [gameTitle, setGameTitle] = useState('壹城翻牌游戏');
+  const [gameTitle, setGameTitle] = useState('');
   const [autoRestartSeconds, setAutoRestartSeconds] = useState(10);
   const [drinkParameter, setDrinkParameter] = useState(1);
   const [firstCardDrinkCount, setFirstCardDrinkCount] = useState(3);
@@ -40,6 +40,16 @@ function App() {
   const [turnTimeoutSeconds, setTurnTimeoutSeconds] = useState(30);
   const [itemFlipCountThreshold, setItemFlipCountThreshold] = useState(3);
   const [reverseItemFlipCountThreshold, setReverseItemFlipCountThreshold] = useState(2);
+  
+  // 显示配置
+  const [displayConfig, setDisplayConfig] = useState({
+    showFlipCount: true,
+    showDrinkCount: true,
+    showCountdownToggle: true,
+    showCountdownText: true,
+    showTurnImage: false,
+    turnImageUrl: ''
+  });
   
   // Socket连接状态
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -107,6 +117,9 @@ function App() {
           }
           if (data.itemFlipCountThreshold && typeof data.itemFlipCountThreshold === 'number') {
             setItemFlipCountThreshold(data.itemFlipCountThreshold);
+          }
+          if (data.displayConfig && typeof data.displayConfig === 'object') {
+            setDisplayConfig(data.displayConfig);
           }
         })
         .catch(error => {
@@ -252,6 +265,7 @@ function App() {
             columns={columns}
             gameTitle={gameTitle}
             autoRestartSeconds={autoRestartSeconds}
+            displayConfig={displayConfig}
             onBack={() => {}}
             socket={socket}
             gameState={gameState}
