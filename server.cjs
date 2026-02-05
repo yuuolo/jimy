@@ -331,6 +331,96 @@ let intermissionConfig = userPreferences.intermissionConfig || {
 // 中间件
 app.use(express.json());
 
+// 配置multer用于插播视频上传
+const intermissionVideoStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const videoDir = path.join(__dirname, 'public', 'upload', 'video');
+    if (!fs.existsSync(videoDir)) {
+      fs.mkdirSync(videoDir, { recursive: true });
+    }
+    cb(null, videoDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const originalName = file.originalname.replace(/[^a-zA-Z0-9\u4e00-\u9fa5._-]/g, '_');
+    cb(null, uniqueSuffix + '-' + originalName);
+  }
+});
+
+const uploadIntermissionVideo = multer({
+  storage: intermissionVideoStorage,
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 50MB限制
+  },
+  fileFilter: function (req, file, cb) {
+    // 只接受视频文件
+    if (!file.mimetype.startsWith('video/')) {
+      return cb(new Error('只接受视频文件'), false);
+    }
+    cb(null, true);
+  }
+});
+
+// 配置multer用于插播图片上传
+const intermissionImageStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const imageDir = path.join(__dirname, 'public', 'upload', 'image');
+    if (!fs.existsSync(imageDir)) {
+      fs.mkdirSync(imageDir, { recursive: true });
+    }
+    cb(null, imageDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const originalName = file.originalname.replace(/[^a-zA-Z0-9\u4e00-\u9fa5._-]/g, '_');
+    cb(null, uniqueSuffix + '-' + originalName);
+  }
+});
+
+const uploadIntermissionImage = multer({
+  storage: intermissionImageStorage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB限制
+  },
+  fileFilter: function (req, file, cb) {
+    // 只接受图片文件
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new Error('只接受图片文件'), false);
+    }
+    cb(null, true);
+  }
+});
+
+// 配置multer用于插播音效上传
+const intermissionAudioStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const audioDir = path.join(__dirname, 'public', 'upload', 'audio');
+    if (!fs.existsSync(audioDir)) {
+      fs.mkdirSync(audioDir, { recursive: true });
+    }
+    cb(null, audioDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const originalName = file.originalname.replace(/[^a-zA-Z0-9\u4e00-\u9fa5._-]/g, '_');
+    cb(null, uniqueSuffix + '-' + originalName);
+  }
+});
+
+const uploadIntermissionAudio = multer({
+  storage: intermissionAudioStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB限制
+  },
+  fileFilter: function (req, file, cb) {
+    // 只接受音频文件
+    if (!file.mimetype.startsWith('audio/')) {
+      return cb(new Error('只接受音频文件'), false);
+    }
+    cb(null, true);
+  }
+});
+
 // 插播配置API端点
 app.get('/api/intermission', (req, res) => {
   try {
@@ -351,6 +441,163 @@ app.post('/api/intermission', (req, res) => {
   } catch (error) {
     Logger.error('更新插播配置失败', { error: error.message });
     res.status(500).json({ error: '更新插播配置失败' });
+  }
+});
+
+// 上传插播视频
+app.post('/api/upload-intermission-video', uploadIntermissionVideo.single('video'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: '没有上传文件' });
+    }
+    
+    const file = req.file;
+    const videoUrl = `/upload/video/${file.filename}`;
+    
+    Logger.info('插播视频上传成功', { 
+      filename: file.filename,
+      size: file.size,
+      mimetype: file.mimetype,
+      videoUrl: videoUrl
+    });
+    
+    res.json({ 
+      success: true, 
+      message: '插播视频上传成功',
+      videoUrl: videoUrl
+    });
+  } catch (error) {
+    Logger.error('插播视频上传失败', { error: error.message });
+    res.status(500).json({ success: false, message: '上传失败' });
+  }
+});
+
+// 上传插播图片
+app.post('/api/upload-intermission-image', uploadIntermissionImage.single('image'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: '没有上传文件' });
+    }
+    
+    const file = req.file;
+    const imageUrl = `/upload/image/${file.filename}`;
+    
+    Logger.info('插播图片上传成功', { 
+      filename: file.filename,
+      size: file.size,
+      mimetype: file.mimetype,
+      imageUrl: imageUrl
+    });
+    
+    res.json({ 
+      success: true, 
+      message: '插播图片上传成功',
+      imageUrl: imageUrl
+    });
+  } catch (error) {
+    Logger.error('插播图片上传失败', { error: error.message });
+    res.status(500).json({ success: false, message: '上传失败' });
+  }
+});
+
+// 上传插播音效
+app.post('/api/upload-intermission-audio', uploadIntermissionAudio.single('audio'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: '没有上传文件' });
+    }
+    
+    const file = req.file;
+    const audioUrl = `/upload/audio/${file.filename}`;
+    
+    Logger.info('插播音效上传成功', { 
+      filename: file.filename,
+      size: file.size,
+      mimetype: file.mimetype,
+      audioUrl: audioUrl
+    });
+    
+    res.json({ 
+      success: true, 
+      message: '插播音效上传成功',
+      audioUrl: audioUrl
+    });
+  } catch (error) {
+    Logger.error('插播音效上传失败', { error: error.message });
+    res.status(500).json({ success: false, message: '上传失败' });
+  }
+});
+
+// 获取插播文件列表
+app.get('/api/intermission-files', (req, res) => {
+  try {
+    const videoDir = path.join(__dirname, 'public', 'upload', 'video');
+    const imageDir = path.join(__dirname, 'public', 'upload', 'image');
+    const audioDir = path.join(__dirname, 'public', 'upload', 'audio');
+    
+    const videoFiles = fs.existsSync(videoDir) ? fs.readdirSync(videoDir).filter(file => /\.(mp4|webm|ogg|mov|avi|mkv|flv|wmv)$/i.test(file)).map(file => ({
+      type: 'video',
+      name: file,
+      url: `/upload/video/${file}`
+    })) : [];
+    
+    const imageFiles = fs.existsSync(imageDir) ? fs.readdirSync(imageDir).filter(file => /\.(jpg|jpeg|png|gif|svg|webp)$/i.test(file)).map(file => ({
+      type: 'image',
+      name: file,
+      url: `/upload/image/${file}`
+    })) : [];
+    
+    const audioFiles = fs.existsSync(audioDir) ? fs.readdirSync(audioDir).filter(file => /\.(mp3|wav|ogg|aac|flac|m4a)$/i.test(file)).map(file => ({
+      type: 'audio',
+      name: file,
+      url: `/upload/audio/${file}`
+    })) : [];
+    
+    res.json({
+      success: true,
+      files: {
+        video: videoFiles,
+        image: imageFiles,
+        audio: audioFiles
+      }
+    });
+  } catch (error) {
+    Logger.error('获取插播文件列表失败', { error: error.message });
+    res.status(500).json({ success: false, message: '获取文件列表失败' });
+  }
+});
+
+// 删除插播文件
+app.delete('/api/intermission-file', (req, res) => {
+  try {
+    const { type, filename } = req.query;
+    
+    if (!type || !filename) {
+      return res.status(400).json({ success: false, message: '缺少参数' });
+    }
+    
+    let filePath;
+    if (type === 'video') {
+      filePath = path.join(__dirname, 'public', 'upload', 'video', filename);
+    } else if (type === 'image') {
+      filePath = path.join(__dirname, 'public', 'upload', 'image', filename);
+    } else if (type === 'audio') {
+      filePath = path.join(__dirname, 'public', 'upload', 'audio', filename);
+    } else {
+      return res.status(400).json({ success: false, message: '无效的文件类型' });
+    }
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, message: '文件不存在' });
+    }
+    
+    fs.unlinkSync(filePath);
+    Logger.info('插播文件删除成功', { type, filename });
+    
+    res.json({ success: true, message: '文件删除成功' });
+  } catch (error) {
+    Logger.error('插播文件删除失败', { error: error.message });
+    res.status(500).json({ success: false, message: '删除失败' });
   }
 });
 
@@ -982,8 +1229,9 @@ function initializeGame(cardCount) {
   };
   
   Logger.info('游戏初始化成功', { gameState });
-  // 广播游戏状态给所有玩家
   io.emit('gameState', gameState);
+  
+  checkIntermission('gameStart', null, io, Logger);
 }
 
 // 检查技能获得的公共方法
@@ -1001,6 +1249,8 @@ function checkSkillAward(skillType, threshold, flipCount, playerId, userPreferen
       queueLength: playerQueue.players.length
     });
     io.emit('itemAwarded', { playerId, nickname: playerQueue.turnPlayer?.nickname });
+    
+    checkIntermission('getItem', null, io, Logger);
   } else if (skillType === 'reverseItem' && flipCount === threshold && !gameState.item.reverseItem.hasItem) {
     gameState.item.reverseItem.hasItem = true;
     gameState.item.reverseItem.itemPlayerId = playerId;
@@ -1014,6 +1264,8 @@ function checkSkillAward(skillType, threshold, flipCount, playerId, userPreferen
       queueLength: playerQueue.players.length
     });
     io.emit('reverseItemAwarded', { playerId, nickname: playerQueue.turnPlayer?.nickname });
+    
+    checkIntermission('getItem', null, io, Logger);
   }
 }
 
@@ -1041,18 +1293,25 @@ function checkIntermission(triggertype, data, io, Logger) {
     if (triggertype === 'useReverseItem' && item.triggers.useReverseItem) {
       return true;
     }
-    if (triggertype === 'drinkCount' && item.triggers.drinkCount && data >= item.triggers.drinkCount) {
+    if (triggertype === 'drinkCount' && item.triggers.drinkCount && data === item.triggers.drinkCount) {
+      return true;
+    }
+    if (triggertype === 'getItem' && item.triggers.getItem) {
+      return true;
+    }
+    if (triggertype === 'jingCard' && item.triggers.jingCard) {
+      return true;
+    }
+    if (triggertype === 'gameStart' && item.triggers.gameStart) {
       return true;
     }
     return false;
   });
   
   if (triggeredItems.length > 0) {
-    // 随机选择一个触发的插播
     const selectedItem = triggeredItems[Math.floor(Math.random() * triggeredItems.length)];
     Logger.info('触发插播', { type: selectedItem.type, triggers: triggertype });
     
-    // 广播插播事件给所有玩家
     io.emit('intermission', selectedItem);
   }
 }
@@ -1245,6 +1504,8 @@ io.on('connection', (socket) => {
             flipCount: flipCount,
             drinkCount: drinkCount
           });
+          
+          checkIntermission('jingCard', null, io, Logger);
 
           if (playerQueue.turnPlayer && !playerQueue.turnPlayer.isActive) {
             Logger.info('当前回合玩家离线，5秒后自动重新启动游戏', { playerId: playerQueue.turnPlayer.id, nickname: playerQueue.turnPlayer.nickname });
@@ -2127,8 +2388,8 @@ app.post('/api/configurations', (req, res) => {
     const backupDir = path.join(__dirname, 'public', 'png', 'backup', name);
     const backcardBackupDir = path.join(backupDir, 'backcard');
     const endcardBackupDir = path.join(backupDir, 'endcard');
+    const intermissionBackupDir = path.join(backupDir, 'intermission');
     
-    // 创建备份目录
     if (!fs.existsSync(backupDir)) {
       fs.mkdirSync(backupDir, { recursive: true });
     }
@@ -2137,6 +2398,9 @@ app.post('/api/configurations', (req, res) => {
     }
     if (!fs.existsSync(endcardBackupDir)) {
       fs.mkdirSync(endcardBackupDir, { recursive: true });
+    }
+    if (!fs.existsSync(intermissionBackupDir)) {
+      fs.mkdirSync(intermissionBackupDir, { recursive: true });
     }
     
     // 复制backcard目录下的所有图片文件
@@ -2159,6 +2423,54 @@ app.post('/api/configurations', (req, res) => {
       endcardFiles.forEach(file => {
         const sourcePath = path.join(endcardSourceDir, file);
         const destPath = path.join(endcardBackupDir, file);
+        if (fs.statSync(sourcePath).isFile()) {
+          fs.copyFileSync(sourcePath, destPath);
+        }
+      });
+    }
+    
+    const intermissionVideoSourceDir = path.join(__dirname, 'public', 'upload', 'video');
+    const intermissionVideoBackupDir = path.join(intermissionBackupDir, 'video');
+    if (fs.existsSync(intermissionVideoSourceDir)) {
+      if (!fs.existsSync(intermissionVideoBackupDir)) {
+        fs.mkdirSync(intermissionVideoBackupDir, { recursive: true });
+      }
+      const videoFiles = fs.readdirSync(intermissionVideoSourceDir);
+      videoFiles.forEach(file => {
+        const sourcePath = path.join(intermissionVideoSourceDir, file);
+        const destPath = path.join(intermissionVideoBackupDir, file);
+        if (fs.statSync(sourcePath).isFile()) {
+          fs.copyFileSync(sourcePath, destPath);
+        }
+      });
+    }
+    
+    const intermissionImageSourceDir = path.join(__dirname, 'public', 'upload', 'image');
+    const intermissionImageBackupDir = path.join(intermissionBackupDir, 'image');
+    if (fs.existsSync(intermissionImageSourceDir)) {
+      if (!fs.existsSync(intermissionImageBackupDir)) {
+        fs.mkdirSync(intermissionImageBackupDir, { recursive: true });
+      }
+      const imageFiles = fs.readdirSync(intermissionImageSourceDir);
+      imageFiles.forEach(file => {
+        const sourcePath = path.join(intermissionImageSourceDir, file);
+        const destPath = path.join(intermissionImageBackupDir, file);
+        if (fs.statSync(sourcePath).isFile()) {
+          fs.copyFileSync(sourcePath, destPath);
+        }
+      });
+    }
+    
+    const intermissionAudioSourceDir = path.join(__dirname, 'public', 'upload', 'audio');
+    const intermissionAudioBackupDir = path.join(intermissionBackupDir, 'audio');
+    if (fs.existsSync(intermissionAudioSourceDir)) {
+      if (!fs.existsSync(intermissionAudioBackupDir)) {
+        fs.mkdirSync(intermissionAudioBackupDir, { recursive: true });
+      }
+      const audioFiles = fs.readdirSync(intermissionAudioSourceDir);
+      audioFiles.forEach(file => {
+        const sourcePath = path.join(intermissionAudioSourceDir, file);
+        const destPath = path.join(intermissionAudioBackupDir, file);
         if (fs.statSync(sourcePath).isFile()) {
           fs.copyFileSync(sourcePath, destPath);
         }
@@ -2225,8 +2537,8 @@ app.post('/api/configurations/:id/apply', (req, res) => {
     const backupDir = path.join(__dirname, 'public', 'png', 'backup', name);
     const backcardBackupDir = path.join(backupDir, 'backcard');
     const endcardBackupDir = path.join(backupDir, 'endcard');
+    const intermissionBackupDir = path.join(backupDir, 'intermission');
     
-    // 复制backcard图片
     if (fs.existsSync(backcardBackupDir)) {
       const backcardFiles = fs.readdirSync(backcardBackupDir);
       backcardFiles.forEach(file => {
@@ -2238,7 +2550,6 @@ app.post('/api/configurations/:id/apply', (req, res) => {
       });
     }
     
-    // 复制endcard图片
     if (fs.existsSync(endcardBackupDir)) {
       const endcardFiles = fs.readdirSync(endcardBackupDir);
       endcardFiles.forEach(file => {
@@ -2250,15 +2561,100 @@ app.post('/api/configurations/:id/apply', (req, res) => {
       });
     }
     
+    const intermissionVideoDir = path.join(__dirname, 'public', 'upload', 'video');
+    const intermissionImageDir = path.join(__dirname, 'public', 'upload', 'image');
+    const intermissionAudioDir = path.join(__dirname, 'public', 'upload', 'audio');
+    
+    if (fs.existsSync(intermissionVideoDir)) {
+      const videoFiles = fs.readdirSync(intermissionVideoDir);
+      videoFiles.forEach(file => {
+        const filePath = path.join(intermissionVideoDir, file);
+        if (fs.statSync(filePath).isFile()) {
+          fs.unlinkSync(filePath);
+        }
+      });
+    }
+    
+    if (fs.existsSync(intermissionImageDir)) {
+      const imageFiles = fs.readdirSync(intermissionImageDir);
+      imageFiles.forEach(file => {
+        const filePath = path.join(intermissionImageDir, file);
+        if (fs.statSync(filePath).isFile()) {
+          fs.unlinkSync(filePath);
+        }
+      });
+    }
+    
+    if (fs.existsSync(intermissionAudioDir)) {
+      const audioFiles = fs.readdirSync(intermissionAudioDir);
+      audioFiles.forEach(file => {
+        const filePath = path.join(intermissionAudioDir, file);
+        if (fs.statSync(filePath).isFile()) {
+          fs.unlinkSync(filePath);
+        }
+      });
+    }
+    
+    if (fs.existsSync(intermissionBackupDir)) {
+      const intermissionVideoBackupDir = path.join(intermissionBackupDir, 'video');
+      if (fs.existsSync(intermissionVideoBackupDir)) {
+        if (!fs.existsSync(intermissionVideoDir)) {
+          fs.mkdirSync(intermissionVideoDir, { recursive: true });
+        }
+        const videoFiles = fs.readdirSync(intermissionVideoBackupDir);
+        videoFiles.forEach(file => {
+          const sourcePath = path.join(intermissionVideoBackupDir, file);
+          const destPath = path.join(intermissionVideoDir, file);
+          if (fs.statSync(sourcePath).isFile()) {
+            fs.copyFileSync(sourcePath, destPath);
+          }
+        });
+      }
+      
+      const intermissionImageBackupDir = path.join(intermissionBackupDir, 'image');
+      if (fs.existsSync(intermissionImageBackupDir)) {
+        if (!fs.existsSync(intermissionImageDir)) {
+          fs.mkdirSync(intermissionImageDir, { recursive: true });
+        }
+        const imageFiles = fs.readdirSync(intermissionImageBackupDir);
+        imageFiles.forEach(file => {
+          const sourcePath = path.join(intermissionImageBackupDir, file);
+          const destPath = path.join(intermissionImageDir, file);
+          if (fs.statSync(sourcePath).isFile()) {
+            fs.copyFileSync(sourcePath, destPath);
+          }
+        });
+      }
+      
+      const intermissionAudioBackupDir = path.join(intermissionBackupDir, 'audio');
+      if (fs.existsSync(intermissionAudioBackupDir)) {
+        if (!fs.existsSync(intermissionAudioDir)) {
+          fs.mkdirSync(intermissionAudioDir, { recursive: true });
+        }
+        const audioFiles = fs.readdirSync(intermissionAudioBackupDir);
+        audioFiles.forEach(file => {
+          const sourcePath = path.join(intermissionAudioBackupDir, file);
+          const destPath = path.join(intermissionAudioDir, file);
+          if (fs.statSync(sourcePath).isFile()) {
+            fs.copyFileSync(sourcePath, destPath);
+          }
+        });
+      }
+    }
+    
     // 更新用户偏好设置
     if (config) {
       Object.assign(userPreferences, config);
-      // 保存到配置文件
       writeConfig(userPreferences);
       
-      // 更新游戏状态
       if (config.defaultCardCount) {
         gameState.cardCount = config.defaultCardCount;
+      }
+      
+      if (config.intermissionConfig) {
+        intermissionConfig = config.intermissionConfig;
+        const intermissionConfigPath = path.join(__dirname, 'intermission-config.json');
+        fs.writeFileSync(intermissionConfigPath, JSON.stringify(intermissionConfig, null, 2), 'utf8');
       }
       
       Logger.info('配置应用成功', { id: configData.id, name: configData.name });

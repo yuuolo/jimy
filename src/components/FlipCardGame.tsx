@@ -125,6 +125,20 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
     allowJoinQueue: true,
     allowExitQueue: true
   });
+  const [intermissionFiles, setIntermissionFiles] = useState<{
+    video: any[];
+    image: any[];
+    audio: any[];
+  }>({
+    video: [],
+    image: [],
+    audio: []
+  });
+  const [selectedFileType, setSelectedFileType] = useState<'video' | 'image' | 'audio'>('image');
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [showIntermissionAdvanced, setShowIntermissionAdvanced] = useState(false);
+  const [intermissionPassword, setIntermissionPassword] = useState('');
+  const [showIntermissionPasswordDialog, setShowIntermissionPasswordDialog] = useState(false);
   const prevIsMyTurnRef = useRef(false);
   
   interface DrinkTextConfig {
@@ -506,6 +520,91 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       console.error('加载插播配置失败:', error);
     }
   }, []);
+  
+  // 加载插播文件列表
+  const loadIntermissionFiles = useCallback(async () => {
+    try {
+      const response = await fetch('/api/intermission-files');
+      if (response.ok) {
+        const data = await response.json();
+        setIntermissionFiles(data.files);
+      }
+    } catch (error) {
+      console.error('加载插播文件列表失败:', error);
+    }
+  }, []);
+  
+  // 上传插播文件
+  const uploadIntermissionFile = useCallback(async (file: File, type: 'video' | 'image' | 'audio') => {
+    const formData = new FormData();
+    formData.append(type, file);
+    
+    const endpoint = type === 'video' ? '/api/upload-intermission-video' : 
+                    type === 'image' ? '/api/upload-intermission-image' : 
+                    '/api/upload-intermission-audio';
+    
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', endpoint, true);
+      
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const progress = Math.round((event.loaded / event.total) * 100);
+          setUploadProgress(progress);
+        }
+      };
+      
+      xhr.onload = () => {
+        if (xhr.status === 200) {
+          const response = JSON.parse(xhr.responseText);
+          if (response.success) {
+            alert(`${type === 'video' ? '视频' : type === 'image' ? '图片' : '音效'}上传成功`);
+            loadIntermissionFiles();
+            setUploadProgress(0);
+          } else {
+            alert('上传失败');
+          }
+        } else {
+          alert('上传失败');
+        }
+        setUploadProgress(0);
+      };
+      
+      xhr.onerror = () => {
+        alert('上传失败');
+        setUploadProgress(0);
+      };
+      
+      xhr.send(formData);
+    } catch (error) {
+      console.error('上传插播文件失败:', error);
+      alert('上传失败');
+      setUploadProgress(0);
+    }
+  }, [loadIntermissionFiles]);
+  
+  // 删除插播文件
+  const deleteIntermissionFile = useCallback(async (type: 'video' | 'image' | 'audio', filename: string) => {
+    try {
+      const response = await fetch(`/api/intermission-file?type=${type}&filename=${filename}`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          alert('文件删除成功');
+          loadIntermissionFiles();
+        } else {
+          alert('删除失败');
+        }
+      } else {
+        alert('删除失败');
+      }
+    } catch (error) {
+      console.error('删除插播文件失败:', error);
+      alert('删除失败');
+    }
+  }, [loadIntermissionFiles]);
   
   // 保存插播配置
   const saveIntermissionConfig = useCallback(async (config: any) => {
@@ -922,6 +1021,11 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
   useEffect(() => {
     loadIntermissionConfig();
   }, [loadIntermissionConfig]);
+  
+  // 加载插播文件列表
+  useEffect(() => {
+    loadIntermissionFiles();
+  }, [loadIntermissionFiles]);
 
   useEffect(() => {
     const isMobile = window.innerWidth < 768;
@@ -1748,91 +1852,381 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
                 marginTop: '40px'
               }}
             >
-              <h3 
-                style={{
-                  color: '#fff',
-                  fontSize: '18px',
-                  marginBottom: '15px',
-                  fontWeight: 'bold'
-                }}
-              >
-                插播管理
-              </h3>
               <div 
                 style={{
                   display: 'flex',
-                  flexDirection: 'column',
-                  gap: '20px'
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '15px'
                 }}
               >
+                <h3 
+                  style={{
+                    color: '#fff',
+                    fontSize: '18px',
+                    fontWeight: 'bold',
+                    margin: 0
+                  }}
+                >
+                  插播管理
+                </h3>
+                <button
+                  onClick={() => {
+                    if (showIntermissionAdvanced) {
+                      setShowIntermissionAdvanced(false);
+                    } else {
+                      setShowIntermissionPasswordDialog(true);
+                    }
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    fontSize: '14px',
+                    color: '#fff',
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {showIntermissionAdvanced ? '折叠' : '展开'}
+                </button>
+              </div>
+              
+              {showIntermissionAdvanced && (
                 <div 
                   style={{
                     display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '15px',
-                    background: 'rgba(255, 255, 255, 0.1)',
-                    borderRadius: '10px'
+                    flexDirection: 'column',
+                    gap: '20px'
                   }}
                 >
-                  <span 
+                  <div 
                     style={{
-                      color: '#fff',
-                      fontSize: '14px',
-                      fontWeight: '500'
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '15px',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '10px'
                     }}
                   >
-                    启用插播
-                  </span>
-                  <button
-                    onClick={() => {
-                      const newConfig = { ...intermissionConfig, enabled: !intermissionConfig.enabled };
-                      saveIntermissionConfig(newConfig);
-                    }}
+                    <span 
+                      style={{
+                        color: '#fff',
+                        fontSize: '14px',
+                        fontWeight: '500'
+                      }}
+                    >
+                      启用插播
+                    </span>
+                    <button
+                      onClick={() => {
+                        const newConfig = { ...intermissionConfig, enabled: !intermissionConfig.enabled };
+                        saveIntermissionConfig(newConfig);
+                      }}
+                      style={{
+                        width: '50px',
+                        height: '28px',
+                        borderRadius: '14px',
+                        background: intermissionConfig.enabled ? 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' : 'rgba(255, 255, 255, 0.2)',
+                        border: 'none',
+                        cursor: 'pointer',
+                        position: 'relative',
+                        transition: 'background 0.3s ease'
+                      }}
+                    >
+                      <div 
+                        style={{
+                          width: '22px',
+                          height: '22px',
+                          borderRadius: '50%',
+                          background: '#fff',
+                          position: 'absolute',
+                          top: '3px',
+                          left: intermissionConfig.enabled ? '25px' : '3px',
+                          transition: 'left 0.3s ease',
+                          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+                        }}
+                      />
+                    </button>
+                  </div>
+                  
+                  <div 
                     style={{
-                      width: '50px',
-                      height: '28px',
-                      borderRadius: '14px',
-                      background: intermissionConfig.enabled ? 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' : 'rgba(255, 255, 255, 0.2)',
-                      border: 'none',
-                      cursor: 'pointer',
-                      position: 'relative',
-                      transition: 'background 0.3s ease'
+                      padding: '20px',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '10px'
                     }}
                   >
+                    <h4 
+                      style={{
+                        color: '#fff',
+                        fontSize: '16px',
+                        marginBottom: '15px',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      插播列表 ({intermissionConfig.items.length})
+                    </h4>
+                  
+                  {/* 文件管理区域 */}
+                  <div 
+                    style={{
+                      marginBottom: '20px',
+                      padding: '15px',
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      borderRadius: '8px'
+                    }}
+                  >
+                    <h5 
+                      style={{
+                        color: '#fff',
+                        fontSize: '14px',
+                        marginBottom: '10px',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      文件管理
+                    </h5>
+                    
+                    {/* 文件类型选择 */}
                     <div 
                       style={{
-                        width: '22px',
-                        height: '22px',
-                        borderRadius: '50%',
-                        background: '#fff',
-                        position: 'absolute',
-                        top: '3px',
-                        left: intermissionConfig.enabled ? '25px' : '3px',
-                        transition: 'left 0.3s ease',
-                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+                        display: 'flex',
+                        gap: '10px',
+                        marginBottom: '10px'
+                      }}
+                    >
+                      <button
+                        onClick={() => setSelectedFileType('image')}
+                        style={{
+                          flex: 1,
+                          padding: '8px',
+                          fontSize: '12px',
+                          color: '#fff',
+                          background: selectedFileType === 'image' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'rgba(255, 255, 255, 0.1)',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        图片
+                      </button>
+                      <button
+                        onClick={() => setSelectedFileType('video')}
+                        style={{
+                          flex: 1,
+                          padding: '8px',
+                          fontSize: '12px',
+                          color: '#fff',
+                          background: selectedFileType === 'video' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'rgba(255, 255, 255, 0.1)',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        视频
+                      </button>
+                      <button
+                        onClick={() => setSelectedFileType('audio')}
+                        style={{
+                          flex: 1,
+                          padding: '8px',
+                          fontSize: '12px',
+                          color: '#fff',
+                          background: selectedFileType === 'audio' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'rgba(255, 255, 255, 0.1)',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        音效
+                      </button>
+                    </div>
+                    
+                    {/* 上传按钮 */}
+                    <input
+                      type="file"
+                      id={`upload-${selectedFileType}`}
+                      style={{ display: 'none' }}
+                      accept={selectedFileType === 'image' ? 'image/*' : selectedFileType === 'video' ? 'video/*' : 'audio/*'}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          uploadIntermissionFile(file, selectedFileType);
+                        }
                       }}
                     />
-                  </button>
-                </div>
-                
-                <div 
-                  style={{
-                    padding: '20px',
-                    background: 'rgba(255, 255, 255, 0.1)',
-                    borderRadius: '10px'
-                  }}
-                >
-                  <h4 
-                    style={{
-                      color: '#fff',
-                      fontSize: '16px',
-                      marginBottom: '15px',
-                      fontWeight: 'bold'
-                    }}
-                  >
-                    插播列表 ({intermissionConfig.items.length})
-                  </h4>
+                    <button
+                      onClick={() => {
+                        const input = document.getElementById(`upload-${selectedFileType}`) as HTMLInputElement;
+                        input?.click();
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px',
+                        fontSize: '14px',
+                        fontWeight: 'bold',
+                        color: '#fff',
+                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        marginBottom: '10px'
+                      }}
+                    >
+                      上传{selectedFileType === 'image' ? '图片' : selectedFileType === 'video' ? '视频' : '音效'}
+                    </button>
+                    
+                    {/* 上传进度 */}
+                    {uploadProgress > 0 && (
+                      <div 
+                        style={{
+                          marginBottom: '10px'
+                        }}
+                      >
+                        <div 
+                          style={{
+                            height: '6px',
+                            background: 'rgba(255, 255, 255, 0.1)',
+                            borderRadius: '3px',
+                            overflow: 'hidden'
+                          }}
+                        >
+                          <div 
+                            style={{
+                              height: '100%',
+                              width: `${uploadProgress}%`,
+                              background: 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)',
+                              transition: 'width 0.3s ease'
+                            }}
+                          />
+                        </div>
+                        <p 
+                          style={{
+                            color: '#fff',
+                            fontSize: '12px',
+                            marginTop: '5px',
+                            textAlign: 'center'
+                          }}
+                        >
+                          上传中... {uploadProgress}%
+                        </p>
+                      </div>
+                    )}
+                    
+                    {/* 文件列表 */}
+                    <div 
+                      style={{
+                        maxHeight: '200px',
+                        overflowY: 'auto',
+                        background: 'rgba(0, 0, 0, 0.2)',
+                        borderRadius: '6px',
+                        padding: '10px'
+                      }}
+                    >
+                      {intermissionFiles[selectedFileType].length === 0 ? (
+                        <p 
+                          style={{
+                            color: 'rgba(255, 255, 255, 0.5)',
+                            fontSize: '12px',
+                            textAlign: 'center',
+                            padding: '20px'
+                          }}
+                        >
+                          暂无{selectedFileType === 'image' ? '图片' : selectedFileType === 'video' ? '视频' : '音效'}文件
+                        </p>
+                      ) : (
+                        intermissionFiles[selectedFileType].map((file: any, fileIndex: number) => (
+                          <div 
+                            key={fileIndex}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '8px',
+                              background: 'rgba(255, 255, 255, 0.05)',
+                              borderRadius: '4px',
+                              marginBottom: '5px'
+                            }}
+                          >
+                            <span 
+                              style={{
+                                color: '#fff',
+                                fontSize: '12px',
+                                flex: 1,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                marginRight: '10px'
+                              }}
+                            >
+                              {file.name}
+                            </span>
+                            <div 
+                              style={{
+                                display: 'flex',
+                                gap: '5px'
+                              }}
+                            >
+                              <button
+                                onClick={() => {
+                                  const lastItemIndex = intermissionConfig.items.length - 1;
+                                  if (lastItemIndex >= 0) {
+                                    if (selectedFileType === 'audio') {
+                                      const audioInput = document.getElementById(`item-audio-${lastItemIndex}`) as HTMLInputElement;
+                                      if (audioInput) {
+                                        audioInput.value = file.url;
+                                        const newItems = [...intermissionConfig.items];
+                                        newItems[lastItemIndex].audio = file.url;
+                                        const newConfig = { ...intermissionConfig, items: newItems };
+                                        saveIntermissionConfig(newConfig);
+                                      }
+                                    } else {
+                                      const urlInput = document.getElementById(`item-url-${lastItemIndex}`) as HTMLInputElement;
+                                      if (urlInput) {
+                                        urlInput.value = file.url;
+                                        const newItems = [...intermissionConfig.items];
+                                        newItems[lastItemIndex].url = file.url;
+                                        const newConfig = { ...intermissionConfig, items: newItems };
+                                        saveIntermissionConfig(newConfig);
+                                      }
+                                    }
+                                  }
+                                }}
+                                style={{
+                                  padding: '4px 8px',
+                                  fontSize: '10px',
+                                  color: '#fff',
+                                  background: 'linear-gradient(135deg, #4CAF50 0%, #45a049 100%)',
+                                  border: 'none',
+                                  borderRadius: '3px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                使用
+                              </button>
+                              <button
+                                onClick={() => deleteIntermissionFile(selectedFileType, file.name)}
+                                style={{
+                                  padding: '4px 8px',
+                                  fontSize: '10px',
+                                  color: '#fff',
+                                  background: 'linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%)',
+                                  border: 'none',
+                                  borderRadius: '3px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                删除
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  
                   <button
                     onClick={() => {
                       const newItem = {
@@ -1845,6 +2239,13 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
                           useItem: true,
                           useReverseItem: true,
                           drinkCount: 5
+                        },
+                        effects: {
+                          fadeIn: false,
+                          fadeOut: false,
+                          zoom: false,
+                          rotate: false,
+                          blur: false
                         }
                       };
                       const newConfig = {
@@ -1927,6 +2328,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
                       >
                         <input
                           type="text"
+                          id={`item-url-${index}`}
                           placeholder="资源URL"
                           value={item.url}
                           onChange={(e) => {
@@ -1965,6 +2367,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
                         />
                         <input
                           type="text"
+                          id={`item-audio-${index}`}
                           placeholder="音效URL（可选）"
                           value={item.audio}
                           onChange={(e) => {
@@ -2040,6 +2443,81 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
                               }}
                             />
                           </label>
+                          <label 
+                            style={{
+                              color: '#fff',
+                              fontSize: '12px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center'
+                            }}
+                          >
+                            获得道具时触发
+                            <input
+                              type="checkbox"
+                              checked={item.triggers.getItem}
+                              onChange={(e) => {
+                                const newItems = [...intermissionConfig.items];
+                                newItems[index].triggers.getItem = e.target.checked;
+                                const newConfig = { ...intermissionConfig, items: newItems };
+                                saveIntermissionConfig(newConfig);
+                              }}
+                              style={{
+                                width: '16px',
+                                height: '16px'
+                              }}
+                            />
+                          </label>
+                          <label 
+                            style={{
+                              color: '#fff',
+                              fontSize: '12px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center'
+                            }}
+                          >
+                            摸到镜哥牌时触发
+                            <input
+                              type="checkbox"
+                              checked={item.triggers.jingCard}
+                              onChange={(e) => {
+                                const newItems = [...intermissionConfig.items];
+                                newItems[index].triggers.jingCard = e.target.checked;
+                                const newConfig = { ...intermissionConfig, items: newItems };
+                                saveIntermissionConfig(newConfig);
+                              }}
+                              style={{
+                                width: '16px',
+                                height: '16px'
+                              }}
+                            />
+                          </label>
+                          <label 
+                            style={{
+                              color: '#fff',
+                              fontSize: '12px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center'
+                            }}
+                          >
+                            游戏开始时触发
+                            <input
+                              type="checkbox"
+                              checked={item.triggers.gameStart}
+                              onChange={(e) => {
+                                const newItems = [...intermissionConfig.items];
+                                newItems[index].triggers.gameStart = e.target.checked;
+                                const newConfig = { ...intermissionConfig, items: newItems };
+                                saveIntermissionConfig(newConfig);
+                              }}
+                              style={{
+                                width: '16px',
+                                height: '16px'
+                              }}
+                            />
+                          </label>
                           <div 
                             style={{
                               display: 'flex',
@@ -2053,7 +2531,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
                                 fontSize: '12px'
                               }}
                             >
-                              酒量达到时触发
+                              酒量等于时触发
                             </label>
                             <input
                               type="number"
@@ -2076,11 +2554,176 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
                             />
                           </div>
                         </div>
+                        
+                        {/* 流行效果处理选择 */}
+                        <div 
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '5px',
+                            marginTop: '10px',
+                            padding: '10px',
+                            background: 'rgba(0, 0, 0, 0.2)',
+                            borderRadius: '4px'
+                          }}
+                        >
+                          <label 
+                            style={{
+                              color: '#fff',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              marginBottom: '5px'
+                            }}
+                          >
+                            流行效果处理
+                          </label>
+                          <label 
+                            style={{
+                              color: '#fff',
+                              fontSize: '12px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center'
+                            }}
+                          >
+                            淡入效果
+                            <input
+                              type="checkbox"
+                              checked={item.effects?.fadeIn || false}
+                              onChange={(e) => {
+                                const newItems = [...intermissionConfig.items];
+                                if (!newItems[index].effects) {
+                                  newItems[index].effects = {};
+                                }
+                                newItems[index].effects.fadeIn = e.target.checked;
+                                const newConfig = { ...intermissionConfig, items: newItems };
+                                saveIntermissionConfig(newConfig);
+                              }}
+                              style={{
+                                width: '16px',
+                                height: '16px'
+                              }}
+                            />
+                          </label>
+                          <label 
+                            style={{
+                              color: '#fff',
+                              fontSize: '12px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center'
+                            }}
+                          >
+                            淡出效果
+                            <input
+                              type="checkbox"
+                              checked={item.effects?.fadeOut || false}
+                              onChange={(e) => {
+                                const newItems = [...intermissionConfig.items];
+                                if (!newItems[index].effects) {
+                                  newItems[index].effects = {};
+                                }
+                                newItems[index].effects.fadeOut = e.target.checked;
+                                const newConfig = { ...intermissionConfig, items: newItems };
+                                saveIntermissionConfig(newConfig);
+                              }}
+                              style={{
+                                width: '16px',
+                                height: '16px'
+                              }}
+                            />
+                          </label>
+                          <label 
+                            style={{
+                              color: '#fff',
+                              fontSize: '12px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center'
+                            }}
+                          >
+                            缩放效果
+                            <input
+                              type="checkbox"
+                              checked={item.effects?.zoom || false}
+                              onChange={(e) => {
+                                const newItems = [...intermissionConfig.items];
+                                if (!newItems[index].effects) {
+                                  newItems[index].effects = {};
+                                }
+                                newItems[index].effects.zoom = e.target.checked;
+                                const newConfig = { ...intermissionConfig, items: newItems };
+                                saveIntermissionConfig(newConfig);
+                              }}
+                              style={{
+                                width: '16px',
+                                height: '16px'
+                              }}
+                            />
+                          </label>
+                          <label 
+                            style={{
+                              color: '#fff',
+                              fontSize: '12px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center'
+                            }}
+                          >
+                            旋转效果
+                            <input
+                              type="checkbox"
+                              checked={item.effects?.rotate || false}
+                              onChange={(e) => {
+                                const newItems = [...intermissionConfig.items];
+                                if (!newItems[index].effects) {
+                                  newItems[index].effects = {};
+                                }
+                                newItems[index].effects.rotate = e.target.checked;
+                                const newConfig = { ...intermissionConfig, items: newItems };
+                                saveIntermissionConfig(newConfig);
+                              }}
+                              style={{
+                                width: '16px',
+                                height: '16px'
+                              }}
+                            />
+                          </label>
+                          <label 
+                            style={{
+                              color: '#fff',
+                              fontSize: '12px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center'
+                            }}
+                          >
+                            模糊效果
+                            <input
+                              type="checkbox"
+                              checked={item.effects?.blur || false}
+                              onChange={(e) => {
+                                const newItems = [...intermissionConfig.items];
+                                if (!newItems[index].effects) {
+                                  newItems[index].effects = {};
+                                }
+                                newItems[index].effects.blur = e.target.checked;
+                                const newConfig = { ...intermissionConfig, items: newItems };
+                                saveIntermissionConfig(newConfig);
+                              }}
+                              style={{
+                                width: '16px',
+                                height: '16px'
+                              }}
+                            />
+                          </label>
+                        </div>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
+              )}
             </div>
             
             <button 
@@ -2156,6 +2799,145 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       <audio ref={turnStartAudioRef} src="/sounds/turn-start.mp3" preload="auto">
         您的浏览器不支持音频元素。
        </audio>
+      
+      {/* 插播口令输入对话框 */}
+      {showIntermissionPasswordDialog && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 99999
+          }}
+          onClick={() => setShowIntermissionPasswordDialog(false)}
+        >
+          <div 
+            style={{
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              padding: '30px',
+              borderRadius: '20px',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+              maxWidth: '400px',
+              width: '90%',
+              textAlign: 'center'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 
+              style={{
+                color: '#fff',
+                marginBottom: '20px',
+                fontSize: '24px',
+                margin: 0
+              }}
+            >
+              插播高级功能
+            </h2>
+            <p 
+              style={{
+                color: 'rgba(255, 255, 255, 0.9)',
+                marginBottom: '20px',
+                fontSize: '16px'
+              }}
+            >
+              请输入口令以展开插播管理功能
+            </p>
+            <input
+              type="password"
+              value={intermissionPassword}
+              onChange={(e) => setIntermissionPassword(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  if (intermissionPassword === '7879') {
+                    setShowIntermissionAdvanced(true);
+                    setShowIntermissionPasswordDialog(false);
+                    setIntermissionPassword('');
+                  } else {
+                    alert('口令错误');
+                    setIntermissionPassword('');
+                  }
+                }
+              }}
+              placeholder="请输入口令"
+              style={{
+                width: '100%',
+                padding: '12px',
+                fontSize: '16px',
+                border: 'none',
+                borderRadius: '8px',
+                marginBottom: '20px',
+                background: 'rgba(255, 255, 255, 0.2)',
+                color: '#fff',
+                outline: 'none'
+              }}
+            />
+            <div 
+              style={{
+                display: 'flex',
+                gap: '10px',
+                justifyContent: 'center'
+              }}
+            >
+              <button
+                onClick={() => {
+                  if (intermissionPassword === '7879') {
+                    setShowIntermissionAdvanced(true);
+                    setShowIntermissionPasswordDialog(false);
+                    setIntermissionPassword('');
+                  } else {
+                    alert('口令错误');
+                    setIntermissionPassword('');
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  padding: '12px 24px',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                  color: '#fff',
+                  background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  transition: 'transform 0.2s ease'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                确认
+              </button>
+              <button
+                onClick={() => {
+                  setShowIntermissionPasswordDialog(false);
+                  setIntermissionPassword('');
+                }}
+                style={{
+                  flex: 1,
+                  padding: '12px 24px',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                  color: '#fff',
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  transition: 'transform 0.2s ease'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* 房主转让请求确认弹窗 */}
       {transferRequest && (
@@ -2267,11 +3049,12 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
         <div 
           style={{
             position: 'fixed',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            backgroundColor: 'rgba(0, 0, 0, 0.95)',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: '30%',
+            height: '30%',
+            backgroundColor: 'transparent',
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
@@ -2280,9 +3063,11 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
         >
           <div 
             style={{
-              maxWidth: '50%',
-              maxHeight: '50vh',
-              textAlign: 'center'
+              maxWidth: '25vw',
+              maxHeight: '25vh',
+              textAlign: 'center',
+              animation: currentIntermission.effects?.fadeIn ? 'fadeIn 0.5s ease-in' : 'none',
+              transition: currentIntermission.effects?.fadeOut ? 'opacity 0.5s ease-out' : 'none'
             }}
           >
             {currentIntermission.type === 'image' ? (
@@ -2293,7 +3078,11 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
                   maxWidth: '100%',
                   maxHeight: '100%',
                   objectFit: 'contain',
-                  borderRadius: '8px'
+                  borderRadius: '8px',
+                  transform: currentIntermission.effects?.zoom ? 'scale(1.1)' : 'scale(1)',
+                  animation: currentIntermission.effects?.rotate ? 'rotate 3s ease-in-out infinite' : 'none',
+                  filter: currentIntermission.effects?.blur ? 'blur(5px)' : 'none',
+                  transition: 'transform 0.3s ease, filter 0.3s ease'
                 }}
               />
             ) : (
@@ -2306,7 +3095,11 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
                   maxWidth: '100%',
                   maxHeight: '100%',
                   objectFit: 'contain',
-                  borderRadius: '8px'
+                  borderRadius: '8px',
+                  transform: currentIntermission.effects?.zoom ? 'scale(1.1)' : 'scale(1)',
+                  animation: currentIntermission.effects?.rotate ? 'rotate 3s ease-in-out infinite' : 'none',
+                  filter: currentIntermission.effects?.blur ? 'blur(5px)' : 'none',
+                  transition: 'transform 0.3s ease, filter 0.3s ease'
                 }}
               />
             )}

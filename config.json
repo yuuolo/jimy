@@ -83,5 +83,29 @@
     "9": "3/4杯",
     "10": "吹一杯！",
     ">10": "吹一杯！"
+  },
+  "intermissionConfig": {
+    "enabled": true,
+    "items": [
+      {
+        "id": "1770327351211",
+        "type": "image",
+        "url": "/upload/image/1770327540396-630104955.jpeg",
+        "duration": 3000,
+        "audio": "/upload/audio/1770330449461-195602845-button-7.mp3",
+        "triggers": {
+          "useItem": true,
+          "useReverseItem": true,
+          "drinkCount": 0
+        },
+        "effects": {
+          "fadeIn": true,
+          "fadeOut": true,
+          "zoom": true,
+          "rotate": false,
+          "blur": false
+        }
+      }
+    ]
   }
 }

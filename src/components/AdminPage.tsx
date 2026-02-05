@@ -109,6 +109,11 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
   const [口头禅TextMessage, set口头禅TextMessage] = useState('');
   const [new口头禅Text, setNew口头禅Text] = useState('');
   
+  const [intermissionConfig, setIntermissionConfig] = useState<any>({
+    enabled: true,
+    items: []
+  });
+  
   const isInitialized = useRef(false);
 
   // 加载保存的偏好设置
@@ -140,6 +145,19 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
           set口头禅TextEnabled(data.口头禅TextConfig.enabled || false);
           set口头禅Texts(data.口头禅TextConfig.texts || []);
         }
+        
+        const loadIntermissionConfig = async () => {
+          try {
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+            const response = await fetch(`${apiUrl}/api/intermission`);
+            const data = await response.json();
+            setIntermissionConfig(data);
+          } catch (error) {
+            console.error('加载插播配置失败:', error);
+          }
+        };
+        
+        await loadIntermissionConfig();
         
         isInitialized.current = true;
       } catch (error) {
@@ -996,7 +1014,8 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
             selectedBackcards,
             displayConfig,
             drinkTextEnabled,
-            drinkTexts
+            drinkTexts,
+            intermissionConfig
           },
           resources: {
             backcards: backcards,
@@ -1080,6 +1099,22 @@ const AdminPage: React.FC<AdminPageProps> = ({ socket, onBack, drinkParameter: p
             '10': '',
             '>10': ''
           });
+          
+          if (config.intermissionConfig) {
+            setIntermissionConfig(config.intermissionConfig);
+            try {
+              const apiUrl = import.meta.env.VITE_API_URL || 'http://jimy.novrein.com:3001';
+              await fetch(`${apiUrl}/api/intermission`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(config.intermissionConfig)
+              });
+            } catch (error) {
+              console.error('保存插播配置失败:', error);
+            }
+          }
         }
         // 重新加载资源列表
         await Promise.all([
