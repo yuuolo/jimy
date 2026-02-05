@@ -104,10 +104,27 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
   const [logoImage, setLogoImage] = useState<{ src: string; x: number; y: number } | null>(null);
   const [isSelectingPlayer, setIsSelectingPlayer] = useState(false);
   const [showGameIni, setShowGameIni] = useState(false);
+  const [showOwnerPanel, setShowOwnerPanel] = useState(false);
   const [gameIniTimestamp, setGameIniTimestamp] = useState<number>(Date.now());
   const [skillMessage, setSkillMessage] = useState<string | null>(null);
   const [targetPlayerId, setTargetPlayerId] = useState<string | null>(null);
   const [isReverseEffectActive, setIsReverseEffectActive] = useState(false);
+  const [ownerState, setOwnerState] = useState<{ ownerId: string | null; isOwner: boolean }>({ ownerId: null, isOwner: false });
+  const [transferRequest, setTransferRequest] = useState<{ fromPlayerId: string; fromNickname: string } | null>(null);
+  const [transferTimeout, setTransferTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [transferCountdown, setTransferCountdown] = useState<number>(0);
+  const [cooldown, setCooldown] = useState<number>(0);
+  const [intermissionConfig, setIntermissionConfig] = useState<any>({
+    enabled: true,
+    items: []
+  });
+  const [currentIntermission, setCurrentIntermission] = useState<any>(null);
+  const [intermissionAudio, setIntermissionAudio] = useState<HTMLAudioElement | null>(null);
+  const [shakingCardId, setShakingCardId] = useState<number | null>(null);
+  const [queueControl, setQueueControl] = useState({
+    allowJoinQueue: true,
+    allowExitQueue: true
+  });
   const prevIsMyTurnRef = useRef(false);
   
   interface DrinkTextConfig {
@@ -437,18 +454,112 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
   }, [socket, isMyTurn, currentFlipCount, user.id]);
 
   const handleExitQueue = useCallback(() => {
+    if (!queueControl.allowExitQueue) {
+      alert('房主已禁止退出队列');
+      return;
+    }
     if (socket && user.id) {
       socket.emit('exitQueue', user.id);
       console.log('已发送退出队列请求');
     }
-  }, [socket, user.id, playAudio, jingAudioRef, speakText]);
+  }, [socket, user.id, playAudio, jingAudioRef, speakText, queueControl.allowExitQueue]);
+  
+  // 声明房主权限
+  const handleClaimOwner = useCallback(() => {
+    if (socket && user) {
+      socket.emit('claimOwner', user.id);
+    }
+  }, [socket, user]);
+  
+  // 请求转让房主权限
+  const handleRequestTransfer = useCallback(() => {
+    if (socket && user && cooldown === 0) {
+      socket.emit('requestTransfer', {
+        playerId: user.id,
+        nickname: user.nickname || '玩家'
+      });
+    }
+  }, [socket, user, cooldown]);
+  
+  // 响应转让请求
+  const handleRespondTransfer = useCallback((accept: boolean) => {
+    if (socket) {
+      socket.emit('respondTransfer', { accept });
+    }
+    setTransferRequest(null);
+    setTransferCountdown(0);
+    if (transferTimeout) {
+      clearTimeout(transferTimeout);
+      setTransferTimeout(null);
+    }
+  }, [socket, transferTimeout]);
+  
+  // 加载插播配置
+  const loadIntermissionConfig = useCallback(async () => {
+    try {
+      const response = await fetch('/api/intermission');
+      if (response.ok) {
+        const config = await response.json();
+        setIntermissionConfig(config);
+      }
+    } catch (error) {
+      console.error('加载插播配置失败:', error);
+    }
+  }, []);
+  
+  // 保存插播配置
+  const saveIntermissionConfig = useCallback(async (config: any) => {
+    try {
+      const response = await fetch('/api/intermission', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(config)
+      });
+      if (response.ok) {
+        setIntermissionConfig(config);
+        alert('保存成功');
+      } else {
+        alert('保存失败');
+      }
+    } catch (error) {
+      console.error('保存插播配置失败:', error);
+      alert('保存失败');
+    }
+  }, []);
+  
+  // 处理插播
+  const handleIntermission = useCallback((item: any) => {
+    setCurrentIntermission(item);
+    
+    // 播放音效（如果有）
+    if (item.audio) {
+      const audio = new Audio(item.audio);
+      audio.play().catch(error => console.error('播放音效失败:', error));
+      setIntermissionAudio(audio);
+    }
+    
+    // 定时关闭插播
+    setTimeout(() => {
+      setCurrentIntermission(null);
+      if (intermissionAudio) {
+        intermissionAudio.pause();
+        setIntermissionAudio(null);
+      }
+    }, item.duration || 3000);
+  }, [intermissionAudio]);
 
   const handleJoinQueue = useCallback(() => {
+    if (!queueControl.allowJoinQueue) {
+      alert('房主已禁止加入队列');
+      return;
+    }
     if (socket && user.id) {
       socket.emit('joinQueue', { id: user.id, nickname: user.nickname });
       console.log('已发送加入队列请求');
     }
-  }, [socket, user.id, user.nickname]);
+  }, [socket, user.id, user.nickname, queueControl.allowJoinQueue]);
 
   const isUserInQueue = useMemo(() => {
     return gameState.queueState?.players.some((p: Player) => p.id === user.id) ?? false;
@@ -553,6 +664,42 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       }
     }
   }, [turnCountdown, isMyTurn]);
+
+  // 监听倒计时，小于5秒或等于0秒时每2秒随机晃动一张牌
+  useEffect(() => {
+    let shakeInterval: NodeJS.Timeout | null = null;
+    
+    const startShaking = () => {
+      if (gameState.cards) {
+        const unflippedCards = gameState.cards.filter(card => !card.isFlipped);
+        if (unflippedCards.length > 0) {
+          // 使用基于倒计时值的确定性选择，确保所有玩家看到相同的晃动效果
+          const seed = turnCountdown + Math.floor(Date.now() / 2000);
+          const deterministicIndex = Math.abs(seed % unflippedCards.length);
+          const selectedCard = unflippedCards[deterministicIndex];
+          setShakingCardId(selectedCard.id);
+          // 0.5秒后停止晃动，准备下一次
+          setTimeout(() => {
+            setShakingCardId(null);
+          }, 500);
+        }
+      }
+    };
+    
+    if ((turnCountdown < 5 || turnCountdown === 0) && gameState.cards) {
+      // 立即开始晃动
+      startShaking();
+      // 每2秒晃动一次
+      shakeInterval = setInterval(startShaking, 2000);
+    }
+    
+    return () => {
+      if (shakeInterval) {
+        clearInterval(shakeInterval);
+      }
+      setShakingCardId(null);
+    };
+  }, [turnCountdown, isMyTurn, gameState.cards]);
 
   // 请求通知权限
   useEffect(() => {
@@ -676,6 +823,76 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
     socket.on('gameIniUpdated', () => {
       setGameIniTimestamp(Date.now());
     });
+    socket.on('preferencesUpdated', (preferences: any) => {
+      if (preferences.queueControl) {
+        setQueueControl(preferences.queueControl);
+      }
+    });
+    
+    // 监听房主状态
+    socket.on('ownerState', (state: { ownerId: string | null; isOwner: boolean }) => {
+      setOwnerState(state);
+    });
+    
+    // 监听转让请求
+    socket.on('transferRequest', (request: { fromPlayerId: string; fromNickname: string }) => {
+      setTransferRequest(request);
+      // 10秒后自动同意
+      if (transferTimeout) {
+        clearTimeout(transferTimeout);
+      }
+      setTransferCountdown(10);
+      const countdownInterval = setInterval(() => {
+        setTransferCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(countdownInterval);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      const timeout = setTimeout(() => {
+        clearInterval(countdownInterval);
+        setTransferCountdown(0);
+        setTransferRequest(null);
+      }, 10000);
+      setTransferTimeout(timeout);
+    });
+    
+    // 监听转让结果
+    socket.on('transferResult', (result: { success: boolean; autoAccepted?: boolean }) => {
+      if (result.success) {
+        if (result.autoAccepted) {
+          alert('房主权限已自动转让给你');
+        } else {
+          alert('房主已同意转让权限');
+        }
+      } else {
+        alert('房主拒绝了转让请求');
+      }
+      setTransferRequest(null);
+      setTransferCountdown(0);
+      if (transferTimeout) {
+        clearTimeout(transferTimeout);
+        setTransferTimeout(null);
+      }
+      // 开始冷却
+      setCooldown(60);
+      const countdown = setInterval(() => {
+        setCooldown((prev) => {
+          if (prev <= 1) {
+            clearInterval(countdown);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    });
+    
+    // 监听插播事件
+    socket.on('intermission', (item: any) => {
+      handleIntermission(item);
+    });
 
     return () => {
       socket.off('jingCardFound', handleJingCardFound);
@@ -690,8 +907,21 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       socket.off('reverseItemAwarded', handleReverseItemAwarded);
       socket.off('reverseItemUsed', handleReverseItemUsed);
       socket.off('gameIniUpdated');
+      socket.off('preferencesUpdated');
+      socket.off('ownerState');
+      socket.off('transferRequest');
+      socket.off('transferResult');
+      socket.off('intermission');
+      if (transferTimeout) {
+        clearTimeout(transferTimeout);
+      }
     };
   }, [socket, user.id, playAudio, jingAudioRef, speakText]);
+  
+  // 加载插播配置
+  useEffect(() => {
+    loadIntermissionConfig();
+  }, [loadIntermissionConfig]);
 
   useEffect(() => {
     const isMobile = window.innerWidth < 768;
@@ -699,7 +929,9 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
 
     const adminContainer = document.querySelector('.mobile-admin-container');
     const infoContainer = document.querySelector('.mobile-info-container');
-    if (!adminContainer || !infoContainer) return;
+    const ownerContainer = document.querySelector('.mobile-owner-container');
+    const exitContainer = document.querySelector('.mobile-exit-container');
+    if (!adminContainer || !infoContainer || !ownerContainer || !exitContainer) return;
 
     let hideTimer: NodeJS.Timeout | null = null;
 
@@ -711,6 +943,8 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       if (scrollTop + clientHeight >= scrollHeight - 50) {
         adminContainer.classList.add('show');
         infoContainer.classList.add('show');
+        ownerContainer.classList.add('show');
+        exitContainer.classList.add('show');
 
         if (hideTimer) {
           clearTimeout(hideTimer);
@@ -719,6 +953,8 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
         hideTimer = setTimeout(() => {
           adminContainer.classList.remove('show');
           infoContainer.classList.remove('show');
+          ownerContainer.classList.remove('show');
+          exitContainer.classList.remove('show');
         }, 1000);
       }
     };
@@ -780,7 +1016,16 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
                 <div className="nickname-display">
                   <span className="nickname" onClick={onStartEditNickname}>{user?.nickname || '玩家'}</span>
                   <button onClick={() => setShowGameIni(true)} className="info-button">说明</button>
-                  <button onClick={onAdminClick} className="admin-button">管理</button>
+                  <button onClick={onAdminClick} className="admin-button">系统</button>
+                  {ownerState.isOwner ? (
+                    <button onClick={() => setShowOwnerPanel(true)} className="owner-button">房主</button>
+                  ) : ownerState.ownerId ? (
+                    <button onClick={handleRequestTransfer} className="owner-button" disabled={cooldown > 0}>
+                      {cooldown > 0 ? `抢房(${cooldown}s)` : '抢房'}
+                    </button>
+                  ) : (
+                    <button onClick={handleClaimOwner} className="owner-button">房主</button>
+                  )}
                   {isUserInQueue ? (
                     <button onClick={handleExitQueue} className="exit-queue-button">退出队列</button>
                   ) : (
@@ -888,7 +1133,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
           {gameState.cards?.map((card, index) => (
             <div
               key={card.id}
-              className={`card ${card.isFlipped ? 'flipped' : ''} ${isUserInQueue && !isMyTurn ? 'disabled' : ''}`}
+              className={`card ${card.isFlipped ? 'flipped' : ''} ${isUserInQueue && !isMyTurn ? 'disabled' : ''} ${shakingCardId === card.id ? 'shaking' : ''}`}
               onClick={() => handleFlipCard(card.id)}
             >
               <div className="card-inner">
@@ -1009,7 +1254,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
             {gameState.queueState.players.slice(0, 10).map((player: Player, index: number) => (
               <div 
                 key={player.id} 
-                className={`queue-item ${player.isTurn ? 'current-turn' : ''} ${!player.isActive ? 'inactive' : ''} ${isSelectingPlayer && player.id !== user.id ? 'selectable' : ''} ${targetPlayerId === player.id ? 'target-player' : ''} ${isReverseEffectActive ? 'reverse-effect' : ''}`}
+                className={`queue-item ${player.isTurn ? 'current-turn' : ''} ${!player.isActive ? 'inactive' : ''} ${isSelectingPlayer && player.id !== user.id ? 'selectable' : ''} ${targetPlayerId === player.id ? 'target-player' : ''} ${isReverseEffectActive ? 'reverse-effect' : ''} ${ownerState.ownerId === player.id ? 'owner' : ''}`}
                 onClick={() => {
                   if (isSelectingPlayer && player.id !== user.id && socket) {
                     socket.emit('useItem', { playerId: user.id, targetPlayerId: player.id });
@@ -1021,6 +1266,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
                 {player.isTurn && <span className="turn-indicator">当前回合</span>}
                 {!player.isActive && <span className="inactive-indicator">离线</span>}
                 {isSelectingPlayer && player.id !== user.id && <span className="select-indicator">点击选择</span>}
+                {ownerState.ownerId === player.id && <span className="owner-indicator">房主</span>}
               </div>
             ))}
             {gameState.queueState.players.length > 10 && (
@@ -1033,7 +1279,7 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
       )}
 
       <div className="mobile-admin-container">
-        <button onClick={onAdminClick} className="mobile-admin-button">管理</button>
+        <button onClick={onAdminClick} className="mobile-admin-button">系统</button>
       </div>
 
       <div className="mobile-info-container">
@@ -1041,6 +1287,26 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
           className="mobile-info-button"
           onClick={() => setShowGameIni(true)}
         >说明</button>
+      </div>
+
+      <div className="mobile-owner-container">
+        {ownerState.isOwner ? (
+          <button onClick={() => setShowOwnerPanel(true)} className="mobile-owner-button">房主</button>
+        ) : ownerState.ownerId ? (
+          <button onClick={handleRequestTransfer} className="mobile-owner-button" disabled={cooldown > 0}>
+            {cooldown > 0 ? `抢(${cooldown}s)` : '抢房'}
+          </button>
+        ) : (
+          <button onClick={handleClaimOwner} className="mobile-owner-button">房主</button>
+        )}
+      </div>
+
+      <div className="mobile-exit-container">
+        {isUserInQueue ? (
+          <button onClick={handleExitQueue} className="mobile-exit-button">退出</button>
+        ) : (
+          <button onClick={handleJoinQueue} className="mobile-exit-button">加入</button>
+        )}
       </div>
 
       {showGameIni && (
@@ -1072,6 +1338,772 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
             }}
             onClick={() => setShowGameIni(false)}
           />
+        </div>
+      )}
+
+      {showOwnerPanel && (
+        <div 
+          className="owner-panel-container"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 99999
+          }}
+        >
+          <div 
+            className="owner-panel"
+            style={{
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              padding: '30px',
+              borderRadius: '20px',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+              maxWidth: '600px',
+              width: '90%',
+              maxHeight: '80vh',
+              overflowY: 'auto'
+            }}
+          >
+            <h2 
+              style={{
+                color: '#fff',
+                textAlign: 'center',
+                marginBottom: '20px',
+                fontSize: '28px',
+                fontWeight: 'bold'
+              }}
+            >
+              房主管理
+            </h2>
+            
+            <div 
+              style={{
+                marginBottom: '20px'
+              }}
+            >
+              <h3 
+                style={{
+                  color: '#fff',
+                  fontSize: '18px',
+                  marginBottom: '15px',
+                  fontWeight: 'bold'
+                }}
+              >
+                游戏控制
+              </h3>
+              <button 
+                onClick={() => {
+                  if (window.confirm('确定要重新开始游戏吗？')) {
+                    if (socket) {
+                      socket.emit('restartGame', { cardCount, playerId: 'admin' });
+                      alert('游戏已重新开始');
+                      setShowOwnerPanel(false);
+                    } else {
+                      alert('无法连接到服务器，请刷新页面重试');
+                    }
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: '15px 30px',
+                  fontSize: '18px',
+                  fontWeight: 'bold',
+                  color: '#fff',
+                  background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                  border: 'none',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  transition: 'transform 0.2s ease'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                重新开始游戏
+              </button>
+            </div>
+            
+            <div>
+              <h3 
+                style={{
+                  color: '#fff',
+                  fontSize: '18px',
+                  marginBottom: '15px',
+                  fontWeight: 'bold'
+                }}
+              >
+                玩家管理
+              </h3>
+              {gameState.queueState?.players && gameState.queueState.players.length > 0 ? (
+                <table 
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    borderRadius: '10px',
+                    overflow: 'hidden'
+                  }}
+                >
+                  <thead>
+                    <tr 
+                      style={{
+                        background: 'rgba(0, 0, 0, 0.2)'
+                      }}
+                    >
+                      <th 
+                        style={{
+                          padding: '12px',
+                          color: '#fff',
+                          fontSize: '14px',
+                          textAlign: 'left',
+                          border: 'none'
+                        }}
+                      >
+                        序号
+                      </th>
+                      <th 
+                        style={{
+                          padding: '12px',
+                          color: '#fff',
+                          fontSize: '14px',
+                          textAlign: 'left',
+                          border: 'none'
+                        }}
+                      >
+                        玩家昵称
+                      </th>
+                      <th 
+                        style={{
+                          padding: '12px',
+                          color: '#fff',
+                          fontSize: '14px',
+                          textAlign: 'left',
+                          border: 'none'
+                        }}
+                      >
+                        状态
+                      </th>
+                      <th 
+                        style={{
+                          padding: '12px',
+                          color: '#fff',
+                          fontSize: '14px',
+                          textAlign: 'left',
+                          border: 'none'
+                        }}
+                      >
+                        操作
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {gameState.queueState.players.map((player: Player, index: number) => (
+                      <tr 
+                        key={player.id} 
+                        style={{
+                          background: player.id === gameState.queueState?.turnPlayer?.id ? 'rgba(240, 147, 251, 0.2)' : 'transparent',
+                          borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
+                        }}
+                      >
+                        <td 
+                          style={{
+                            padding: '12px',
+                            color: '#fff',
+                            fontSize: '14px',
+                            border: 'none'
+                          }}
+                        >
+                          {index + 1}
+                        </td>
+                        <td 
+                          style={{
+                            padding: '12px',
+                            color: '#fff',
+                            fontSize: '14px',
+                            border: 'none'
+                          }}
+                        >
+                          {player.nickname}
+                        </td>
+                        <td 
+                          style={{
+                            padding: '12px',
+                            border: 'none'
+                          }}
+                        >
+                          {player.id === gameState.queueState?.turnPlayer?.id ? (
+                            <span 
+                              style={{
+                                background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                                color: '#fff',
+                                padding: '4px 8px',
+                                borderRadius: '4px',
+                                fontSize: '12px',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              当前回合
+                            </span>
+                          ) : (
+                            <span 
+                              style={{
+                                background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                                color: '#fff',
+                                padding: '4px 8px',
+                                borderRadius: '4px',
+                                fontSize: '12px',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              在线
+                            </span>
+                          )}
+                        </td>
+                        <td 
+                          style={{
+                            padding: '12px',
+                            border: 'none'
+                          }}
+                        >
+                          <button
+                            onClick={() => {
+                              if (window.confirm('确定要踢走这个玩家吗？')) {
+                                if (socket) {
+                                  socket.emit('admin:kickPlayer', player.id);
+                                  if (player.id === gameState.queueState?.turnPlayer?.id) {
+                                    socket.emit('admin:endTurn', player.id);
+                                  }
+                                }
+                              }
+                            }}
+                            style={{
+                              padding: '6px 12px',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              color: '#fff',
+                              background: 'linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%)',
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              transition: 'transform 0.2s ease'
+                            }}
+                            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                          >
+                            踢走
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div 
+                  style={{
+                    textAlign: 'center',
+                    color: 'rgba(255, 255, 255, 0.7)',
+                    padding: '20px',
+                    fontSize: '14px'
+                  }}
+                >
+                  暂无玩家
+                </div>
+              )}
+            </div>
+            
+            <div>
+              <h3 
+                style={{
+                  color: '#fff',
+                  fontSize: '18px',
+                  marginBottom: '15px',
+                  fontWeight: 'bold'
+                }}
+              >
+                队列控制
+              </h3>
+              <div 
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}
+              >
+                <div 
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '12px',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    borderRadius: '10px'
+                  }}
+                >
+                  <span 
+                    style={{
+                      color: '#fff',
+                      fontSize: '14px',
+                      fontWeight: '500'
+                    }}
+                  >
+                    允许加入队列
+                  </span>
+                  <button
+                    onClick={() => {
+                      const newValue = !queueControl.allowJoinQueue;
+                      setQueueControl(prev => ({ ...prev, allowJoinQueue: newValue }));
+                      if (socket) {
+                        socket.emit('updateQueueControl', { allowJoinQueue: newValue, allowExitQueue: queueControl.allowExitQueue });
+                      }
+                    }}
+                    style={{
+                      width: '50px',
+                      height: '28px',
+                      borderRadius: '14px',
+                      background: queueControl.allowJoinQueue ? 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' : 'rgba(255, 255, 255, 0.2)',
+                      border: 'none',
+                      cursor: 'pointer',
+                      position: 'relative',
+                      transition: 'background 0.3s ease'
+                    }}
+                  >
+                    <div 
+                      style={{
+                        width: '22px',
+                        height: '22px',
+                        borderRadius: '50%',
+                        background: '#fff',
+                        position: 'absolute',
+                        top: '3px',
+                        left: queueControl.allowJoinQueue ? '25px' : '3px',
+                        transition: 'left 0.3s ease',
+                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+                      }}
+                    />
+                  </button>
+                </div>
+                <div 
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '12px',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    borderRadius: '10px'
+                  }}
+                >
+                  <span 
+                    style={{
+                      color: '#fff',
+                      fontSize: '14px',
+                      fontWeight: '500'
+                    }}
+                  >
+                    允许退出队列
+                  </span>
+                  <button
+                    onClick={() => {
+                      const newValue = !queueControl.allowExitQueue;
+                      setQueueControl(prev => ({ ...prev, allowExitQueue: newValue }));
+                      if (socket) {
+                        socket.emit('updateQueueControl', { allowJoinQueue: queueControl.allowJoinQueue, allowExitQueue: newValue });
+                      }
+                    }}
+                    style={{
+                      width: '50px',
+                      height: '28px',
+                      borderRadius: '14px',
+                      background: queueControl.allowExitQueue ? 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' : 'rgba(255, 255, 255, 0.2)',
+                      border: 'none',
+                      cursor: 'pointer',
+                      position: 'relative',
+                      transition: 'background 0.3s ease'
+                    }}
+                  >
+                    <div 
+                      style={{
+                        width: '22px',
+                        height: '22px',
+                        borderRadius: '50%',
+                        background: '#fff',
+                        position: 'absolute',
+                        top: '3px',
+                        left: queueControl.allowExitQueue ? '25px' : '3px',
+                        transition: 'left 0.3s ease',
+                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+                      }}
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <div 
+              style={{
+                marginTop: '40px'
+              }}
+            >
+              <h3 
+                style={{
+                  color: '#fff',
+                  fontSize: '18px',
+                  marginBottom: '15px',
+                  fontWeight: 'bold'
+                }}
+              >
+                插播管理
+              </h3>
+              <div 
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '20px'
+                }}
+              >
+                <div 
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '15px',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    borderRadius: '10px'
+                  }}
+                >
+                  <span 
+                    style={{
+                      color: '#fff',
+                      fontSize: '14px',
+                      fontWeight: '500'
+                    }}
+                  >
+                    启用插播
+                  </span>
+                  <button
+                    onClick={() => {
+                      const newConfig = { ...intermissionConfig, enabled: !intermissionConfig.enabled };
+                      saveIntermissionConfig(newConfig);
+                    }}
+                    style={{
+                      width: '50px',
+                      height: '28px',
+                      borderRadius: '14px',
+                      background: intermissionConfig.enabled ? 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' : 'rgba(255, 255, 255, 0.2)',
+                      border: 'none',
+                      cursor: 'pointer',
+                      position: 'relative',
+                      transition: 'background 0.3s ease'
+                    }}
+                  >
+                    <div 
+                      style={{
+                        width: '22px',
+                        height: '22px',
+                        borderRadius: '50%',
+                        background: '#fff',
+                        position: 'absolute',
+                        top: '3px',
+                        left: intermissionConfig.enabled ? '25px' : '3px',
+                        transition: 'left 0.3s ease',
+                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+                      }}
+                    />
+                  </button>
+                </div>
+                
+                <div 
+                  style={{
+                    padding: '20px',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    borderRadius: '10px'
+                  }}
+                >
+                  <h4 
+                    style={{
+                      color: '#fff',
+                      fontSize: '16px',
+                      marginBottom: '15px',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    插播列表 ({intermissionConfig.items.length})
+                  </h4>
+                  <button
+                    onClick={() => {
+                      const newItem = {
+                        id: Date.now().toString(),
+                        type: 'image',
+                        url: '',
+                        duration: 3000,
+                        audio: '',
+                        triggers: {
+                          useItem: true,
+                          useReverseItem: true,
+                          drinkCount: 5
+                        }
+                      };
+                      const newConfig = {
+                        ...intermissionConfig,
+                        items: [...intermissionConfig.items, newItem]
+                      };
+                      saveIntermissionConfig(newConfig);
+                    }}
+                    style={{
+                      padding: '10px 20px',
+                      fontSize: '14px',
+                      fontWeight: 'bold',
+                      color: '#fff',
+                      background: 'linear-gradient(135deg, #4CAF50 0%, #45a049 100%)',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      transition: 'transform 0.2s ease',
+                      marginBottom: '15px'
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                    onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                  >
+                    添加插播
+                  </button>
+                  {intermissionConfig.items.map((item: any, index: number) => (
+                    <div 
+                      key={item.id}
+                      style={{
+                        padding: '15px',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        borderRadius: '8px',
+                        marginBottom: '10px'
+                      }}
+                    >
+                      <div 
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          marginBottom: '10px'
+                        }}
+                      >
+                        <span 
+                          style={{
+                            color: '#fff',
+                            fontSize: '14px',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          {item.type === 'image' ? '图片' : '视频'} #{index + 1}
+                        </span>
+                        <button
+                          onClick={() => {
+                            const newConfig = {
+                              ...intermissionConfig,
+                              items: intermissionConfig.items.filter((i: any) => i.id !== item.id)
+                            };
+                            saveIntermissionConfig(newConfig);
+                          }}
+                          style={{
+                            padding: '5px 10px',
+                            fontSize: '12px',
+                            color: '#fff',
+                            background: 'linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%)',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          删除
+                        </button>
+                      </div>
+                      <div 
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '8px'
+                        }}
+                      >
+                        <input
+                          type="text"
+                          placeholder="资源URL"
+                          value={item.url}
+                          onChange={(e) => {
+                            const newItems = [...intermissionConfig.items];
+                            newItems[index].url = e.target.value;
+                            const newConfig = { ...intermissionConfig, items: newItems };
+                            saveIntermissionConfig(newConfig);
+                          }}
+                          style={{
+                            padding: '8px',
+                            fontSize: '14px',
+                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                            borderRadius: '4px',
+                            background: 'rgba(0, 0, 0, 0.3)',
+                            color: '#fff'
+                          }}
+                        />
+                        <input
+                          type="number"
+                          placeholder="播放时长（毫秒）"
+                          value={item.duration}
+                          onChange={(e) => {
+                            const newItems = [...intermissionConfig.items];
+                            newItems[index].duration = parseInt(e.target.value) || 3000;
+                            const newConfig = { ...intermissionConfig, items: newItems };
+                            saveIntermissionConfig(newConfig);
+                          }}
+                          style={{
+                            padding: '8px',
+                            fontSize: '14px',
+                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                            borderRadius: '4px',
+                            background: 'rgba(0, 0, 0, 0.3)',
+                            color: '#fff'
+                          }}
+                        />
+                        <input
+                          type="text"
+                          placeholder="音效URL（可选）"
+                          value={item.audio}
+                          onChange={(e) => {
+                            const newItems = [...intermissionConfig.items];
+                            newItems[index].audio = e.target.value;
+                            const newConfig = { ...intermissionConfig, items: newItems };
+                            saveIntermissionConfig(newConfig);
+                          }}
+                          style={{
+                            padding: '8px',
+                            fontSize: '14px',
+                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                            borderRadius: '4px',
+                            background: 'rgba(0, 0, 0, 0.3)',
+                            color: '#fff'
+                          }}
+                        />
+                        <div 
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '5px',
+                            marginTop: '5px'
+                          }}
+                        >
+                          <label 
+                            style={{
+                              color: '#fff',
+                              fontSize: '12px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center'
+                            }}
+                          >
+                            使用指定技能时触发
+                            <input
+                              type="checkbox"
+                              checked={item.triggers.useItem}
+                              onChange={(e) => {
+                                const newItems = [...intermissionConfig.items];
+                                newItems[index].triggers.useItem = e.target.checked;
+                                const newConfig = { ...intermissionConfig, items: newItems };
+                                saveIntermissionConfig(newConfig);
+                              }}
+                              style={{
+                                width: '16px',
+                                height: '16px'
+                              }}
+                            />
+                          </label>
+                          <label 
+                            style={{
+                              color: '#fff',
+                              fontSize: '12px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center'
+                            }}
+                          >
+                            使用反转技能时触发
+                            <input
+                              type="checkbox"
+                              checked={item.triggers.useReverseItem}
+                              onChange={(e) => {
+                                const newItems = [...intermissionConfig.items];
+                                newItems[index].triggers.useReverseItem = e.target.checked;
+                                const newConfig = { ...intermissionConfig, items: newItems };
+                                saveIntermissionConfig(newConfig);
+                              }}
+                              style={{
+                                width: '16px',
+                                height: '16px'
+                              }}
+                            />
+                          </label>
+                          <div 
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center'
+                            }}
+                          >
+                            <label 
+                              style={{
+                                color: '#fff',
+                                fontSize: '12px'
+                              }}
+                            >
+                              酒量达到时触发
+                            </label>
+                            <input
+                              type="number"
+                              value={item.triggers.drinkCount || 0}
+                              onChange={(e) => {
+                                const newItems = [...intermissionConfig.items];
+                                newItems[index].triggers.drinkCount = parseInt(e.target.value) || 0;
+                                const newConfig = { ...intermissionConfig, items: newItems };
+                                saveIntermissionConfig(newConfig);
+                              }}
+                              style={{
+                                padding: '4px',
+                                fontSize: '12px',
+                                width: '60px',
+                                border: '1px solid rgba(255, 255, 255, 0.2)',
+                                borderRadius: '4px',
+                                background: 'rgba(0, 0, 0, 0.3)',
+                                color: '#fff'
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            
+            <button 
+              onClick={() => setShowOwnerPanel(false)}
+              style={{
+                width: '100%',
+                padding: '15px 30px',
+                fontSize: '18px',
+                fontWeight: 'bold',
+                color: '#fff',
+                background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                border: 'none',
+                borderRadius: '12px',
+                cursor: 'pointer',
+                marginTop: '20px',
+                transition: 'transform 0.2s ease'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+              onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            >
+              关闭
+            </button>
+          </div>
         </div>
       )}
 
@@ -1123,7 +2155,164 @@ const FlipCardGame: React.FC<FlipCardGameProps> = ({
        </audio>
       <audio ref={turnStartAudioRef} src="/sounds/turn-start.mp3" preload="auto">
         您的浏览器不支持音频元素。
-      </audio>
+       </audio>
+      
+      {/* 房主转让请求确认弹窗 */}
+      {transferRequest && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 99999
+          }}
+          onClick={() => handleRespondTransfer(false)}
+        >
+          <div 
+            style={{
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              padding: '30px',
+              borderRadius: '20px',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+              maxWidth: '400px',
+              width: '90%',
+              textAlign: 'center'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 
+              style={{
+                color: '#fff',
+                marginBottom: '20px',
+                fontSize: '24px',
+                fontWeight: 'bold'
+              }}
+            >
+              转让请求
+            </h2>
+            <p 
+              style={{
+                color: '#fff',
+                fontSize: '16px',
+                marginBottom: '30px'
+              }}
+            >
+              {transferRequest.fromNickname} 请求成为房主
+            </p>
+            <div 
+              style={{
+                display: 'flex',
+                justifyContent: 'center',
+                gap: '20px',
+                marginBottom: '20px'
+              }}
+            >
+              <button
+                onClick={() => handleRespondTransfer(true)}
+                style={{
+                  padding: '12px 24px',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  color: '#fff',
+                  background: 'linear-gradient(135deg, #4CAF50 0%, #45a049 100%)',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  transition: 'transform 0.2s ease'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                同意
+              </button>
+              <button
+                onClick={() => handleRespondTransfer(false)}
+                style={{
+                  padding: '12px 24px',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  color: '#fff',
+                  background: 'linear-gradient(135deg, #f44336 0%, #d32f2f 100%)',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  transition: 'transform 0.2s ease'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                拒绝
+              </button>
+            </div>
+            <p 
+              style={{
+                color: 'rgba(255, 255, 255, 0.7)',
+                fontSize: '12px'
+              }}
+            >
+              {transferCountdown > 0 ? `${transferCountdown}秒后自动同意` : '10秒后自动同意'}
+            </p>
+          </div>
+        </div>
+      )}
+      
+      {/* 插播播放组件 */}
+      {currentIntermission && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundColor: 'rgba(0, 0, 0, 0.95)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 999999
+          }}
+        >
+          <div 
+            style={{
+              maxWidth: '50%',
+              maxHeight: '50vh',
+              textAlign: 'center'
+            }}
+          >
+            {currentIntermission.type === 'image' ? (
+              <img
+                src={currentIntermission.url}
+                alt="插播"
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  objectFit: 'contain',
+                  borderRadius: '8px'
+                }}
+              />
+            ) : (
+              <video
+                src={currentIntermission.url}
+                autoPlay
+                muted
+                playsInline
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  objectFit: 'contain',
+                  borderRadius: '8px'
+                }}
+              />
+            )}
+          </div>
+        </div>
+      )}
       <audio ref={countdownWarningAudioRef} src="/sounds/countdown-warning.mp3" preload="auto">
         您的浏览器不支持音频元素。
       </audio>

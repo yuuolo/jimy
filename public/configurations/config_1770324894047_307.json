@@ -1,0 +1,48 @@
+{
+  "id": "config_1770324894047_307",
+  "name": "初始配置",
+  "config": {
+    "cardCount": 9,
+    "columns": 3,
+    "gameTitle": "扫码加入游戏",
+    "autoRestartSeconds": 15,
+    "drinkParameter": 1,
+    "firstCardDrinkCount": 3,
+    "lastCardDrinkCount": 2,
+    "turnTimeoutSeconds": 10,
+    "itemFlipCountThreshold": 3,
+    "reverseItemFlipCountThreshold": 2,
+    "backcardSelectionMode": "random",
+    "backcardSelectionCount": 9,
+    "selectedBackcards": [
+      "1770012539095-970628317.jpeg"
+    ],
+    "displayConfig": {
+      "showFlipCount": false,
+      "showDrinkCount": false,
+      "showCountdownToggle": false,
+      "showCountdownText": false,
+      "showTurnImage": true,
+      "turnImageUrl": "/png/turn-image/1770201177820-506242120.jpg"
+    },
+    "drinkTextEnabled": true,
+    "drinkTexts": {
+      "1": "一小口",
+      "2": "一大口",
+      "3": "1/4杯",
+      "4": "1/4杯",
+      "5": "1/4杯",
+      "6": "半杯",
+      "7": "半杯",
+      "8": "3/4杯",
+      "9": "3/4杯",
+      "10": "吹一杯！",
+      ">10": "吹一杯！"
+    }
+  },
+  "resources": {
+    "backcards": [],
+    "endcards": []
+  },
+  "createdAt": "2026-02-05T20:54:54.048Z"
+}

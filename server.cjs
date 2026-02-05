@@ -207,6 +207,11 @@ const defaultPreferences = {
     showCountdownText: true,
     showTurnImage: false,
     turnImageUrl: ''
+  },
+  // 队列控制选项
+  queueControl: {
+    allowJoinQueue: true,
+    allowExitQueue: true
   }
 };
 
@@ -296,8 +301,59 @@ let gameState = {
   }
 };
 
+// 房主权限管理
+let ownerState = {
+  ownerId: null,         // 当前房主ID
+  ownerSocketId: null,   // 当前房主SocketID
+  transferRequest: null, // 转让请求
+  cooldown: {}           // 抢房冷却
+};
+
+// 插播配置管理
+let intermissionConfig = userPreferences.intermissionConfig || {
+  enabled: true,
+  items: [
+    // {
+    //   id: '1',
+    //   type: 'image', // image or video
+    //   url: 'https://example.com/image.jpg',
+    //   duration: 3000, // 播放时长（毫秒）
+    //   audio: 'https://example.com/audio.mp3', // 音效（可选）
+    //   triggers: {
+    //     useItem: true, // 使用指定技能时触发
+    //     useReverseItem: true, // 使用反转技能时触发
+    //     drinkCount: 5 // 酒量达到此值时触发
+    //   }
+    // }
+  ]
+};
+
 // 中间件
 app.use(express.json());
+
+// 插播配置API端点
+app.get('/api/intermission', (req, res) => {
+  try {
+    res.json(intermissionConfig);
+  } catch (error) {
+    Logger.error('获取插播配置失败', { error: error.message });
+    res.status(500).json({ error: '获取插播配置失败' });
+  }
+});
+
+app.post('/api/intermission', (req, res) => {
+  try {
+    intermissionConfig = req.body;
+    userPreferences.intermissionConfig = intermissionConfig;
+    writeConfig(userPreferences);
+    Logger.info('更新插播配置', { itemsCount: intermissionConfig.items.length });
+    res.json({ success: true });
+  } catch (error) {
+    Logger.error('更新插播配置失败', { error: error.message });
+    res.status(500).json({ error: '更新插播配置失败' });
+  }
+});
+
 app.use(express.static('dist'));
 app.use(express.static('public'));
 
@@ -835,22 +891,33 @@ class PlayerQueue {
       this.playerSockets.delete(player.socketId);
       this.playerLastSeen.delete(playerId);
       
-      // 检查是否需要取消当前回合相关属性
+      // 检查是否需要更新当前回合玩家
       if (this.turnPlayer && this.turnPlayer.id === playerId) {
-        this.turnPlayer = null;
-        this.turnFlipCount = 0;
-        if (this.turnTimer) {
-          clearInterval(this.turnTimer);
-          this.turnTimer = null;
-        }
-        this.turnCountdown = 0;
-        io.emit('turnCountdownUpdated', { countdown: 0 });
-        Logger.info('取消当前回合相关属性', { playerId, nickname: player.nickname });
+        // 重置道具状态
+        gameState.item.hasItem = false;
+        gameState.item.itemPlayerId = null;
+        gameState.item.itemUsed = false;
         
-        // 重置反转道具状态
         gameState.item.reverseItem.hasItem = false;
         gameState.item.reverseItem.itemPlayerId = null;
         gameState.item.reverseItem.itemUsed = false;
+        
+        // 如果队列中还有其他玩家，开始新回合
+        if (this.players.length > 0) {
+          this.nextTurn();
+          Logger.info('当前回合玩家退出队列，开始新回合', { playerId, nickname: player.nickname });
+        } else {
+          // 队列中没有其他玩家，取消当前回合
+          this.turnPlayer = null;
+          this.turnFlipCount = 0;
+          if (this.turnTimer) {
+            clearInterval(this.turnTimer);
+            this.turnTimer = null;
+          }
+          this.turnCountdown = 0;
+          io.emit('turnCountdownUpdated', { countdown: 0 });
+          Logger.info('取消当前回合相关属性，队列中无其他玩家', { playerId, nickname: player.nickname });
+        }
       }
       
       return true;
@@ -961,6 +1028,35 @@ function validatePlayerCount(players, minCount, skillName, socket, Logger) {
   return true;
 }
 
+// 检测并触发插播
+function checkIntermission(triggertype, data, io, Logger) {
+  if (!intermissionConfig.enabled || intermissionConfig.items.length === 0) {
+    return;
+  }
+  
+  const triggeredItems = intermissionConfig.items.filter(item => {
+    if (triggertype === 'useItem' && item.triggers.useItem) {
+      return true;
+    }
+    if (triggertype === 'useReverseItem' && item.triggers.useReverseItem) {
+      return true;
+    }
+    if (triggertype === 'drinkCount' && item.triggers.drinkCount && data >= item.triggers.drinkCount) {
+      return true;
+    }
+    return false;
+  });
+  
+  if (triggeredItems.length > 0) {
+    // 随机选择一个触发的插播
+    const selectedItem = triggeredItems[Math.floor(Math.random() * triggeredItems.length)];
+    Logger.info('触发插播', { type: selectedItem.type, triggers: triggertype });
+    
+    // 广播插播事件给所有玩家
+    io.emit('intermission', selectedItem);
+  }
+}
+
 // WebSocket连接处理
 io.on('connection', (socket) => {
   Logger.info('新用户连接', { socketId: socket.id });
@@ -972,10 +1068,22 @@ io.on('connection', (socket) => {
 
   // 发送用户偏好设置
   socket.emit('preferencesUpdated', userPreferences);
+  
+  // 发送房主状态
+  socket.emit('ownerState', {
+    ownerId: ownerState.ownerId,
+    isOwner: socket.id === ownerState.ownerSocketId
+  });
 
   // 玩家加入队列
   socket.on('joinQueue', (playerData) => {
     Logger.info('玩家加入队列', { socketId: socket.id, playerId: playerData.id, nickname: playerData.nickname });
+    
+    if (!userPreferences.queueControl?.allowJoinQueue) {
+      Logger.warn('加入队列已被禁止', { socketId: socket.id, playerId: playerData.id });
+      socket.emit('error', { message: '房主已禁止加入队列' });
+      return;
+    }
     
     // 添加玩家到队列
     const queueState = playerQueue.addPlayer(socket, playerData);
@@ -1102,6 +1210,9 @@ io.on('connection', (socket) => {
       drinkCount = gameState.drinkCount + 1;
       gameState.drinkCount = drinkCount;
       Logger.info('酒杯数量增加', { flipCount, drinkParameter: userPreferences.drinkParameter, result, drinkCount });
+      
+      // 检查是否触发插播
+      checkIntermission('drinkCount', drinkCount, io, Logger);
     }
     
     const updatedCards = gameState.cards.map(card => {
@@ -1252,6 +1363,9 @@ io.on('connection', (socket) => {
       // 广播道具使用信息
       io.emit('itemUsed', { playerId, targetPlayerId });
       
+      // 触发插播
+      checkIntermission('useItem', null, io, Logger);
+      
       Logger.info('点名道具使用成功', { playerId, targetPlayerId });
     } else {
       Logger.warn('移动玩家到第2位置失败', { playerId, targetPlayerId });
@@ -1305,6 +1419,9 @@ io.on('connection', (socket) => {
       
       // 广播反转道具使用信息
       io.emit('reverseItemUsed', { playerId });
+      
+      // 触发插播
+      checkIntermission('useReverseItem', null, io, Logger);
       
       Logger.info('反转道具使用成功', { playerId });
     } else {
@@ -1393,6 +1510,12 @@ io.on('connection', (socket) => {
   socket.on('exitQueue', (playerId) => {
     Logger.info('玩家退出队列', { socketId: socket.id, playerId });
     
+    if (!userPreferences.queueControl?.allowExitQueue) {
+      Logger.warn('退出队列已被禁止', { socketId: socket.id, playerId });
+      socket.emit('error', { message: '房主已禁止退出队列' });
+      return;
+    }
+    
     // 处理玩家退出队列
     const success = playerQueue.exitQueue(playerId);
     
@@ -1411,6 +1534,24 @@ io.on('connection', (socket) => {
       Logger.warn('玩家退出队列失败，玩家不存在', { socketId: socket.id, playerId });
       socket.emit('error', { message: '退出队列失败，玩家不存在' });
     }
+  });
+
+  // 更新队列控制
+  socket.on('updateQueueControl', (data) => {
+    Logger.info('更新队列控制', { socketId: socket.id, queueControl: data });
+    
+    if (data.allowJoinQueue !== undefined) {
+      userPreferences.queueControl.allowJoinQueue = data.allowJoinQueue;
+    }
+    if (data.allowExitQueue !== undefined) {
+      userPreferences.queueControl.allowExitQueue = data.allowExitQueue;
+    }
+    
+    writeConfig(userPreferences);
+    io.emit('preferencesUpdated', userPreferences);
+    io.emit('gameState', gameState);
+    
+    Logger.info('队列控制已更新', { queueControl: userPreferences.queueControl });
   });
 
   // 处理倒计时显示状态切换
@@ -1456,18 +1597,8 @@ io.on('connection', (socket) => {
         const player = playerQueue.players[playerIndex];
         Logger.info('管理员踢走玩家', { playerId, nickname: player.nickname });
         
-        // 检查是否需要取消当前回合相关属性
-        if (playerQueue.turnPlayer && playerQueue.turnPlayer.id === playerId) {
-          playerQueue.turnPlayer = null;
-          playerQueue.turnFlipCount = 0;
-          if (playerQueue.turnTimer) {
-            clearInterval(playerQueue.turnTimer);
-            playerQueue.turnTimer = null;
-          }
-          playerQueue.turnCountdown = 0;
-          io.emit('turnCountdownUpdated', { countdown: 0 });
-          Logger.info('取消当前回合相关属性', { playerId, nickname: player.nickname });
-        }
+        // 记录是否是当前回合玩家
+        const isTurnPlayer = playerQueue.turnPlayer && playerQueue.turnPlayer.id === playerId;
         
         // 从队列中移除玩家
         playerQueue.players.splice(playerIndex, 1);
@@ -1475,6 +1606,35 @@ io.on('connection', (socket) => {
         // 清理相关数据
         playerQueue.playerSockets.delete(player.socketId);
         playerQueue.playerLastSeen.delete(playerId);
+        
+        // 检查是否需要更新当前回合玩家
+        if (isTurnPlayer) {
+          // 重置道具状态
+          gameState.item.hasItem = false;
+          gameState.item.itemPlayerId = null;
+          gameState.item.itemUsed = false;
+          
+          gameState.item.reverseItem.hasItem = false;
+          gameState.item.reverseItem.itemPlayerId = null;
+          gameState.item.reverseItem.itemUsed = false;
+          
+          // 如果队列中还有其他玩家，开始新回合
+          if (playerQueue.players.length > 0) {
+            playerQueue.nextTurn();
+            Logger.info('当前回合玩家被踢走，开始新回合', { playerId, nickname: player.nickname });
+          } else {
+            // 队列中没有其他玩家，取消当前回合
+            playerQueue.turnPlayer = null;
+            playerQueue.turnFlipCount = 0;
+            if (playerQueue.turnTimer) {
+              clearInterval(playerQueue.turnTimer);
+              playerQueue.turnTimer = null;
+            }
+            playerQueue.turnCountdown = 0;
+            io.emit('turnCountdownUpdated', { countdown: 0 });
+            Logger.info('取消当前回合相关属性，队列中无其他玩家', { playerId, nickname: player.nickname });
+          }
+        }
         
         // 更新游戏状态
         gameState.queueState = playerQueue.getQueueState();
@@ -1532,6 +1692,153 @@ io.on('connection', (socket) => {
     }
   });
 
+  // 声明房主权限
+  socket.on('claimOwner', (playerId) => {
+    Logger.info('玩家声明房主权限', { socketId: socket.id, playerId });
+    
+    // 如果还没有房主，设置当前玩家为房主
+    if (!ownerState.ownerId) {
+      ownerState.ownerId = playerId;
+      ownerState.ownerSocketId = socket.id;
+      Logger.info('玩家成为房主', { socketId: socket.id, playerId });
+      
+      // 广播房主状态变更
+      io.emit('ownerState', {
+        ownerId: playerId,
+        isOwner: false
+      });
+      
+      // 告诉新房主他是房主
+      socket.emit('ownerState', {
+        ownerId: playerId,
+        isOwner: true
+      });
+    }
+  });
+  
+  // 请求转让房主权限
+  socket.on('requestTransfer', (data) => {
+    const { playerId, nickname } = data;
+    Logger.info('玩家请求转让房主权限', { socketId: socket.id, playerId, nickname });
+    
+    // 检查冷却
+    if (ownerState.cooldown[playerId] && Date.now() < ownerState.cooldown[playerId]) {
+      const remaining = Math.ceil((ownerState.cooldown[playerId] - Date.now()) / 1000);
+      socket.emit('error', { message: `抢房冷却中，请${remaining}秒后再试` });
+      return;
+    }
+    
+    // 如果已经有房主，发送转让请求
+    if (ownerState.ownerId) {
+      ownerState.transferRequest = {
+        fromPlayerId: playerId,
+        fromSocketId: socket.id,
+        fromNickname: nickname,
+        timestamp: Date.now()
+      };
+      
+      // 告诉当前房主有转让请求
+      if (ownerState.ownerSocketId) {
+        io.to(ownerState.ownerSocketId).emit('transferRequest', {
+          fromPlayerId: playerId,
+          fromNickname: nickname
+        });
+      }
+      
+      // 设置10秒后自动同意
+      setTimeout(() => {
+        if (ownerState.transferRequest && ownerState.transferRequest.fromPlayerId === playerId) {
+          // 自动同意转让
+          Logger.info('自动同意房主转让请求', { fromPlayerId: playerId });
+          
+          // 更新房主
+          ownerState.ownerId = playerId;
+          ownerState.ownerSocketId = socket.id;
+          ownerState.transferRequest = null;
+          
+          // 设置冷却
+          ownerState.cooldown[playerId] = Date.now() + 60 * 1000;
+          
+          // 广播房主状态变更
+          io.emit('ownerState', {
+            ownerId: playerId,
+            isOwner: false
+          });
+          
+          // 告诉新房主
+          socket.emit('ownerState', {
+            ownerId: playerId,
+            isOwner: true
+          });
+          
+          // 通知原房主
+          if (ownerState.ownerSocketId) {
+            io.to(ownerState.ownerSocketId).emit('transferResult', { success: true, autoAccepted: true });
+          }
+        }
+      }, 10000);
+    }
+  });
+  
+  // 响应转让请求
+  socket.on('respondTransfer', (data) => {
+    const { accept } = data;
+    Logger.info('房主响应转让请求', { socketId: socket.id, accept });
+    
+    // 检查是否是当前房主
+    if (socket.id !== ownerState.ownerSocketId) {
+      socket.emit('error', { message: '你不是当前房主' });
+      return;
+    }
+    
+    if (ownerState.transferRequest) {
+      const { fromPlayerId, fromSocketId, fromNickname } = ownerState.transferRequest;
+      
+      if (accept) {
+        // 同意转让
+        Logger.info('房主同意转让权限', { toPlayerId: fromPlayerId, toNickname: fromNickname });
+        
+        // 更新房主
+        ownerState.ownerId = fromPlayerId;
+        ownerState.ownerSocketId = fromSocketId;
+        
+        // 设置冷却
+        ownerState.cooldown[fromPlayerId] = Date.now() + 60 * 1000;
+        
+        // 广播房主状态变更
+        io.emit('ownerState', {
+          ownerId: fromPlayerId,
+          isOwner: false
+        });
+        
+        // 告诉新房主
+        io.to(fromSocketId).emit('ownerState', {
+          ownerId: fromPlayerId,
+          isOwner: true
+        });
+        io.to(fromSocketId).emit('transferResult', { success: true, autoAccepted: false });
+        
+        // 通知原房主
+        socket.emit('transferResult', { success: true, autoAccepted: false });
+      } else {
+        // 拒绝转让
+        Logger.info('房主拒绝转让权限', { toPlayerId: fromPlayerId, toNickname: fromNickname });
+        
+        // 设置冷却
+        ownerState.cooldown[fromPlayerId] = Date.now() + 60 * 1000;
+        
+        // 通知请求者
+        io.to(fromSocketId).emit('transferResult', { success: false });
+        
+        // 通知原房主
+        socket.emit('transferResult', { success: false });
+      }
+      
+      // 清空转让请求
+      ownerState.transferRequest = null;
+    }
+  });
+
   // 断开连接处理
   socket.on('disconnect', () => {
     Logger.info('用户断开连接', { socketId: socket.id });
@@ -1547,7 +1854,44 @@ io.on('connection', (socket) => {
     
     // 广播队列状态给所有玩家
     io.emit('queueUpdated', queueState);
+    
+    // 如果断开连接的是房主，清空房主状态
+    if (socket.id === ownerState.ownerSocketId) {
+      ownerState.ownerId = null;
+      ownerState.ownerSocketId = null;
+      if (ownerState.transferRequest) {
+        ownerState.transferRequest = null;
+      }
+      // 广播房主状态变更
+      io.emit('ownerState', {
+        ownerId: null,
+        isOwner: false
+      });
+    }
   });
+});
+
+// 插播配置API端点
+app.get('/api/intermission', (req, res) => {
+  try {
+    res.json(intermissionConfig);
+  } catch (error) {
+    Logger.error('获取插播配置失败', { error: error.message });
+    res.status(500).json({ error: '获取插播配置失败' });
+  }
+});
+
+app.post('/api/intermission', (req, res) => {
+  try {
+    intermissionConfig = req.body;
+    userPreferences.intermissionConfig = intermissionConfig;
+    writeConfig(userPreferences);
+    Logger.info('更新插播配置', { itemsCount: intermissionConfig.items.length });
+    res.json({ success: true });
+  } catch (error) {
+    Logger.error('更新插播配置失败', { error: error.message });
+    res.status(500).json({ error: '更新插播配置失败' });
+  }
 });
 
 // 获取图片列表的API端点

@@ -46,6 +46,10 @@
     "showTurnImage": true,
     "turnImageUrl": "/png/turn-image/1770201177820-506242120.jpg"
   },
+  "queueControl": {
+    "allowJoinQueue": true,
+    "allowExitQueue": true
+  },
   "qrcodeConfig": {
     "enabled": true,
     "showQrcode": true,

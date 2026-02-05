@@ -87,6 +87,15 @@ button:focus-visible {
     display: none;
   }
   
+  .mobile-owner-container {
+    display: none;
+  }
+  
+  /* 隐藏移动端退出队列按钮 - PC端 */
+  .mobile-exit-container {
+    display: none;
+  }
+  
   /* 右侧布局区域 */
   .right-layout {
     flex: 0 0 250px;
@@ -127,6 +136,73 @@ button:focus-visible {
   .game-main .game-controls-top {
     margin-bottom: 1rem;
   }
+
+  /* 游戏准备控制区域 */
+.game-prepare-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.prepare-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.prepare-label {
+  font-size: 14px;
+  color: #666;
+}
+
+.ready-button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s;
+}
+
+.ready-button.ready {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.ready-button.not-ready {
+  background-color: #FF9800;
+  color: white;
+}
+
+.prepare-game-button {
+  padding: 8px 16px;
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s;
+}
+
+.prepare-game-button:hover {
+  background-color: #1976D2;
+}
+
+.cancel-prepare-button {
+  padding: 8px 16px;
+  background-color: #f44336;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s;
+}
+
+.cancel-prepare-button:hover {
+  background-color: #d32f2f;
+}
   
   /* 卡片网格 - 大屏幕 */
   .game-main .card-grid {
@@ -1213,6 +1289,16 @@ button:focus-visible {
   background-color: #28a745;
 }
 
+.queue-item.owner {
+  background-color: #e3f2fd;
+  border-color: #bbdefb;
+  box-shadow: 0 0 10px rgba(33, 150, 243, 0.3);
+}
+
+.queue-item.owner .queue-number {
+  background-color: #1976d2;
+}
+
 .queue-nickname {
   flex: 1;
   font-size: 14px;
@@ -1233,6 +1319,16 @@ button:focus-visible {
 
 .inactive-indicator {
   background-color: #dc3545;
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 10px;
+  letter-spacing: 0.02em;
+}
+
+.owner-indicator {
+  background-color: #1976d2;
   color: white;
   font-size: 12px;
   font-weight: 500;
@@ -1442,7 +1538,9 @@ button:focus-visible {
 .turn-controls {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 15px;
+  width: 100%;
 }
 
 .current-player {
@@ -1514,6 +1612,23 @@ button:focus-visible {
 .card.disabled:hover .card-front,
 .card.disabled:hover .card-back {
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* 卡片晃动效果 */
+.card.shaking {
+  animation: cardShake 0.5s ease-in-out infinite;
+}
+
+@keyframes cardShake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-5px) rotate(-2deg);
+  }
+  75% {
+    transform: translateX(5px) rotate(2deg);
+  }
 }
 
 /* 赢家昵称放大广播 */
@@ -1626,6 +1741,26 @@ input:disabled {
 
 .admin-button:hover {
   background-color: #5a6268;
+}
+
+/* 房主按钮样式 */
+.owner-button {
+  background-color: #667eea;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-left: 8px;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+}
+
+.owner-button:hover {
+  background-color: #5568d3;
 }
 
 /* 说明按钮样式 */
@@ -3144,11 +3279,21 @@ input:disabled {
     display: none;
   }
   
+  /* 隐藏当前位置的房主按钮 - 手机端 */
+  .owner-button {
+    display: none;
+  }
+  
+  /* 隐藏当前位置的退出队列按钮 - 手机端 */
+  .exit-queue-button {
+    display: none;
+  }
+  
   /* 底部管理按钮容器 - 手机端 */
   .mobile-admin-container {
     position: fixed;
     bottom: 20px;
-    right: 20px;
+    left: 90px;
     z-index: 100;
     opacity: 0;
     visibility: hidden;
@@ -3181,6 +3326,31 @@ input:disabled {
 
 .mobile-admin-button:hover {
   background-color: #5a6268;
+  transform: scale(1.05);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* 底部房主按钮 - 手机端 */
+.mobile-owner-button {
+  background-color: #667eea;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 56px;
+  height: 56px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.mobile-owner-button:hover {
+  background-color: #5568d3;
   transform: scale(1.05);
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
 }
@@ -3222,6 +3392,64 @@ input:disabled {
 
 .mobile-info-button:hover {
   background-color: #5a6268;
+  transform: scale(1.05);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* 底部房主按钮容器 - 手机端 */
+.mobile-owner-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 100;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s ease;
+}
+
+/* 底部房主按钮显示状态 */
+.mobile-owner-container.show {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* 底部退出队列按钮容器 - 手机端 */
+.mobile-exit-container {
+  position: fixed;
+  bottom: 20px;
+  left: 160px;
+  z-index: 100;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s ease;
+}
+
+/* 底部退出队列按钮显示状态 */
+.mobile-exit-container.show {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* 底部加入/退出队列按钮 - 手机端 */
+.mobile-exit-button {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 56px;
+  height: 56px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-exit-button:hover {
+  background-color: #218838;
   transform: scale(1.05);
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
 }
